@@ -46,8 +46,8 @@ operation it carries no load, because the Silicone dabs do. Not to be described 
 
 ### Station
 One of the three angular positions, 120° apart, at which the cell does all of its work.
-A single Station comprises a Push bolt, a Pull bolt, a Support point, a Centering post
-and a Side clip. Saying "the three stations" is preferred to enumerating the hardware,
+A single Station comprises a Push bolt and its Push knob, a Pull bolt and its Pull knob,
+a Support point, a Centering post and a Side clip. Saying "the three stations" is preferred to enumerating the hardware,
 because everything at a Station shares one ray from the optical axis.
 
 ### Centering post
@@ -61,9 +61,17 @@ The steel washer let into the Mirror plate where a Push bolt bears on it. Exists
 no steel fastener ever contacts plastic at a point — the load is spread over a face, and
 the contact is steel-on-steel.
 
-### Collimation knob
-A printed knob that captures a bolt head in a hex pocket, forming the user-facing end of
-a Push bolt. The capture is a form fit, not friction.
+### Push knob
+The printed knob at the user-facing end of a Push bolt. Captures the bolt's hex head in a
+hex pocket — a form fit, not friction — and carries torque only, never axial load.
+
+### Pull knob
+The printed knob at the user-facing end of a Pull bolt, which is also its nut: it captures
+a plain hex nut in a hex pocket, and the nut stands slightly proud of the printed face so
+that steel, never ABS, bears on the Tube plate. Replaced a wing nut.
+
+Not "Collimation knob" — that name meant only the push-side knob and there are two knobs
+now, so it is banned here alongside "back plate".
 
 ## Standing rule: clearance is a feature
 

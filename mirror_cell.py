@@ -98,25 +98,26 @@ INSERT_DEPTH = 14.0
 WASHER_D = inch(0.500)  # #10 flat washer, the landing pad
 WASHER_T = inch(0.050)
 
-# 10-24 wing nut, on the rear face of the tube plate.
-# Measured from McMaster 90866A011 (zinc-plated steel), not from a catalogue guess.
-# The earlier estimates (19.0 x 11.0) were both undersized.
-WINGNUT_STEP = "90866A011_NO THREADS_Zinc-Plated Steel Wing Nut.STEP"
-WING_SPAN = 22.225   # 0.875" across the wings
-WING_H = 12.700      # 0.500" tall
-WING_BODY_D = 10.274 # 0.4045" across the body
-
-# A wing nut turns, so its wings can point anywhere. Clearance must hold in the worst
-# case: wings radial, reaching WING_SPAN/2 inward toward the knobs.
-
-# One length for all six bolts. 1-1/2" push bolts put the knobs into the wing nuts:
-# they overlap 5.45 mm radially (same station ray), so they must clear axially instead.
-PUSH_BOLT_L = inch(2.0)
-PULL_BOLT_L = inch(2.0)
+# One length for all six bolts, and it is a 1/2" multiple because odd lengths are a
+# nuisance to source. See docs/adr/0002: both rear controls are printed knobs sized to
+# clear each other RADIALLY, which is what makes 1-1/2" enough. The old 2" length existed
+# only to drop a 30 mm knob below a wing nut, and that clearance depended on where the
+# adjusters happened to be set. Buy MACHINE SCREWS -- #10 hex cap screws carry an
+# unthreaded shank about 19 mm long, exactly where the captured nut needs thread.
+PUSH_BOLT_L = inch(1.5)
+PULL_BOLT_L = inch(1.5)
 
 SPRING_OD = 9.0
+SPRING_WIRE_D = 0.9
+SPRING_FREE_L = 20.0
+SPRING_RATE = 13.0 * 4.4482 / 25.4   # N/mm; 13 lb/in, ~5.4 active coils at this geometry
 SPRING_SEAT_D = SPRING_OD + 0.8
-SPRING_SEAT_DEPTH = 2.5
+# 1.0, not 2.5. The seat lengthens the spring's span, so every millimetre of it is a
+# millimetre of preload thrown away: at 2.5 the cell made 1.16 lb per station against the
+# 1.9 lb the spec claimed, and nothing caught it because no assertion computed force from
+# geometry. verify() now does. The seat is belt-and-braces anyway -- the spring rides on
+# the pull bolt shank and cannot wander.
+SPRING_SEAT_DEPTH = 1.0
 
 # --- mirror plate detail -----------------------------------------------------
 POST_IR = MIRROR_D / 2 + POST_GAP  # post inner face
@@ -154,11 +155,25 @@ CAP_D = 12.0        # counterbore in the mirror plate
 CAP_CLEAR = 0.5     # diametral clearance: the disc must always drop in
 CAP_T = 1.5
 
-# --- knob --------------------------------------------------------------------
-KNOB_D = 30.0
+# --- knobs (spec 8.5, docs/adr/0002) -----------------------------------------
+# Both rear controls are printed. That is what lets them clear each other RADIALLY --
+# an invariant that holds no matter how the adjusters are set, unlike the axial escape
+# it replaces. The whole budget is R_PULL - R_PUSH = 19.05 mm, split so the two walls
+# come out equal: the Pull knob captures a NUT (11.11 mm across corners), the Push knob
+# only a HEAD (9.28), so the pull knob needs the larger diameter to match walls.
+PUSH_KNOB_D = 16.0
+PULL_KNOB_D = 18.0
 KNOB_T = 14.0
-KNOB_FLUTES = 8
-KNOB_FLUTE_D = 6.0
+# Flutes are cut by cylinders centred OUTSIDE the rim, so depth is set directly instead
+# of being half the cutter diameter -- at the old sizes a 6 mm cutter cut 3 mm deep and
+# would have left 0.36 mm of wall here. 12 of them, phased so six land on the hex flats;
+# the other six land on corners, which is what sets the depth.
+KNOB_FLUTES = 12
+KNOB_FLUTE_D = 5.0
+KNOB_FLUTE_DEPTH = 1.2
+# Nut stands proud of the pull knob's face, so steel bears on the tube plate and the
+# printed body never touches it -- exactly the contact the wing nut used to make.
+PULL_NUT_PROUD = 0.4
 
 # --- shim --------------------------------------------------------------------
 SHIM_L, SHIM_W = 30.0, 12.0
@@ -304,23 +319,53 @@ def clip():
 
 # ---------------------------------------------------------------- SMALL PARTS
 
-def knob():
-    k = extrude(Circle(KNOB_D / 2), KNOB_T)
+def _fluted(d, height):
+    """Knob body. Flute cutters sit OUTSIDE the rim, so KNOB_FLUTE_DEPTH means what it
+    says: at the old sizing a 6 mm cutter centred on the rim cut 3 mm deep, which on a
+    16 mm knob would have left 0.36 mm of wall.
+
+    The 30 deg offset lands flutes on the hex flats. It is cosmetic at 12 flutes -- they
+    sit every 30 deg and the hex repeats every 60, so half of them fall on corners
+    whatever the phase, and DEPTH is what protects the wall (2.16 mm at a corner). The
+    offset would matter at 6 flutes, where it is worth 0.9 mm. verify() checks the wall
+    against the corner case and, separately, against the solids without assuming any of
+    this."""
+    k = extrude(Circle(d / 2), height)
+    r_cut = d / 2 + KNOB_FLUTE_D / 2 - KNOB_FLUTE_DEPTH
     for i in range(KNOB_FLUTES):
-        a = 360.0 * i / KNOB_FLUTES
-        k -= at(a, KNOB_D / 2) * extrude(Circle(KNOB_FLUTE_D / 2), KNOB_T)
-    # The knob CAPTURES its head rather than accepting it during a timed assembly step,
-    # so it takes the press value even though the pocket is head-sized.
+        a = 30.0 + 360.0 * i / KNOB_FLUTES
+        k -= at(a, r_cut) * extrude(Circle(KNOB_FLUTE_D / 2), height)
+    return k
+
+
+def push_knob():
+    """Rear control on a Push bolt. Captures the hex head at its plate-facing end; it
+    carries torque only, never axial load -- the bolt's reaction goes into the captured
+    nut in the tube plate."""
+    k = _fluted(PUSH_KNOB_D, KNOB_T)
+    # CAPTURES its head rather than accepting it during a timed assembly step, so it
+    # takes the press value even though the pocket is head-sized.
     k -= Pos(0, 0, KNOB_T - (HEAD_T + 0.4)) * hex_prism(HEAD_AF, HEAD_T + 0.4,
                                                         fit=FIT_PRESS)
     k -= extrude(Circle(BOLT_CLEAR_D / 2), KNOB_T)
     return k
 
 
-def wingnut():
-    """Purchased hardware, not printed. Imported so clearances are checked against the
-    real part rather than against numbers I typed in."""
-    return import_step(WINGNUT_STEP)
+def pull_knob():
+    """Rear control on a Pull bolt -- replaces the wing nut. Captures a plain 10-24 hex
+    nut in its FRONT face, PULL_NUT_PROUD shallower than the nut is thick, so the steel
+    bears on the tube plate and this printed body never touches it. An ABS face rotating
+    on an ABS face under sustained tension is the one loading this design refuses.
+
+    Modelled like the push knob: pocket at the TOP, which is both the plate-facing face
+    in the assembly and the way the part prints (pocket up, as the coupon measured it).
+    """
+    k = _fluted(PULL_KNOB_D, KNOB_T)
+    pocket_h = NUT_T - PULL_NUT_PROUD
+    k -= Pos(0, 0, KNOB_T - pocket_h) * hex_prism(NUT_AF, pocket_h, fit=FIT_PRESS)
+    # Through bore: tightening drives more bolt into the knob, and it has to go somewhere.
+    k -= extrude(Circle(BOLT_CLEAR_D / 2), KNOB_T)
+    return k
 
 
 def hex_nut():
@@ -350,13 +395,14 @@ PARTS = {
     "tube_plate": tube_plate,
     "mirror_plate": mirror_plate,
     "clip": clip,
-    "knob": knob,
+    "push_knob": push_knob,
+    "pull_knob": pull_knob,
     "pocket_cap": pocket_cap,
     "shim": shim,
 }
 
 # Purchased hardware. Exported so the viewer can show the real thing, but not printed.
-HARDWARE = {"wingnut": wingnut, "hex_nut": hex_nut, "washer": washer}
+HARDWARE = {"hex_nut": hex_nut, "washer": washer}
 
 BED = (250.0, 250.0, 260.0)  # Anycubic Kobra S1
 
@@ -416,7 +462,7 @@ def sequence():
          "clips at the very end.", None,
          pose(home=tp + ["hex_nut"], up=["mirror_plate"])),
         ("Mirror plate: fit the pull bolts",
-         "Drop a 10-24 \u00d7 2\u2033 hex-head bolt into each hex pocket from the FRONT "
+         "Drop a 10-24 \u00d7 1\u00bd\u2033 hex-head screw into each hex pocket from the FRONT "
          "face, head first. The pocket stops it turning; the head bears on the pocket "
          "floor in compression, which is the one loading ABS does not creep under.", None,
          pose(home=tp + ["hex_nut"], up=["mirror_plate", "pull_bolts"])),
@@ -456,24 +502,28 @@ def sequence():
          "Drop a spring over each pull bolt, then bring the mirror plate down so the "
          "three bolts pass through the tube plate.", None,
          pose(home=tp + ["hex_nut", "springs"] + [k for k in MP_KIDS if k != "shim"])),
-        ("Wing nuts",
-         "Run a wing nut onto each pull bolt from the rear. The bolt comes through "
-         "6.7 mm proud, so you have full thread engagement across the whole range.", None,
-         pose(home=tp + ["hex_nut", "springs", "wingnut"]
+        ("Pull knobs",
+         "Press a 10-24 hex nut into the face of each pull knob — it stands 0.4 mm "
+         "proud on purpose — then run the three knobs onto the pull bolts from the "
+         "rear. The nut bears on the plate; the printed body never touches it.",
+         "If the printed face touches the plate, the nut is in too deep. ABS turning on "
+         "ABS under tension creeps, and the collimation goes with it.",
+         pose(home=tp + ["hex_nut", "springs", "pull_knob"]
               + [k for k in MP_KIDS if k != "shim"])),
-        ("Push bolts and knobs",
-         "Thread the three knob assemblies into the captured nuts from the rear, until "
-         "each tip just touches its landing washer.", None,
-         pose(home=tp + ["hex_nut", "springs", "wingnut", "push_bolts", "knob"]
+        ("Push bolts and push knobs",
+         "Press a hex head into each push knob, then thread the three assemblies into "
+         "the captured nuts from the rear until each tip just touches its landing "
+         "washer.", None,
+         pose(home=tp + ["hex_nut", "springs", "pull_knob", "push_bolts", "push_knob"]
               + [k for k in MP_KIDS if k != "shim"])),
         ("Into the tube, then collimate",
          "Hold the cell at the depth that reaches focus and drill the sonotube using the "
          "insert bores as the guide. Screws go in with 1\u2033 fender washers on the "
-         "OUTSIDE of the tube. Then collimate: back the push bolts off, set tilt with the "
-         "wing nuts, and snug the push bolts to lock.",
+         "OUTSIDE of the tube. Then collimate: back the push knobs off, set tilt with the "
+         "pull knobs, and snug the push knobs to lock.",
          "Without the fender washers a transport knock ovals the holes in the cardboard, "
          "and collimation is gone every time you move the scope.",
-         pose(home=tp + ["hex_nut", "springs", "wingnut", "push_bolts", "knob"]
+         pose(home=tp + ["hex_nut", "springs", "pull_knob", "push_bolts", "push_knob"]
               + [k for k in MP_KIDS if k != "shim"])),
     ]
     return [{"title": t, "detail": d, "caution": c, "pose": p} for t, d, c, p in steps]
@@ -485,14 +535,8 @@ def downloads(parts):
     cannot disagree with the picture it sits under. Coupons are not here: test_coupon.py
     writes its own manifest, because this file must not import it (it imports this one)."""
     qty = {p["name"]: len(p["instances"]) for p in parts}
-    out = [{"name": n, "kind": "printed", "qty": qty.get(n, 1),
-            "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in PARTS]
-    # The one purchased part that has a real solid: the vendor's own STEP, at the repo
-    # root rather than in build/ -- it is an input to this design, not an output of it.
-    out.append({"name": "wingnut", "label": "Wing nut (McMaster 90866A011)",
-                "kind": "vendor", "qty": qty.get("wingnut", 3),
-                "step": WINGNUT_STEP, "stl": "build/wingnut.stl"})
-    return out
+    return [{"name": n, "kind": "printed", "qty": qty.get(n, 1),
+             "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in PARTS]
 
 
 def assembly():
@@ -501,27 +545,28 @@ def assembly():
          "explode": [0, 0, -90], "instances": [{"pos": [0, 0, 0], "rot": 0}]},
         {"name": "mirror_plate", "stl": "mirror_plate.stl", "color": "#4a5260",
          "explode": [0, 0, 40], "instances": [{"pos": [0, 0, Z_MP], "rot": 0}]},
-        {"name": "knob", "stl": "knob.stl", "color": "#8a6a3a",
+        {"name": "push_knob", "stl": "push_knob.stl", "color": "#8a6a3a",
          "explode": [0, 0, -170],
          "instances": _ring(R_PUSH, Z_MP - PUSH_BOLT_L - KNOB_T)},
+        # hangs rearward off the plate face, held off it by the nut standing proud
+        {"name": "pull_knob", "stl": "pull_knob.stl", "color": "#8a6a3a",
+         "explode": [0, 0, -130],
+         "instances": _ring(R_PULL, -(KNOB_T + PULL_NUT_PROUD), orient=False)},
         {"name": "clip", "stl": "clip.stl", "color": "#5f6a7a",
          "explode": [0, 0, 95],
          "instances": [{"pos": [0, 0, Z_MP + MIRROR_PLATE_T + POST_H], "rot": a}
                        for a in STATIONS]},
+        # six identical nuts now: three captured in the tube plate, three in the pull
+        # knobs. The rear three sit -NUT_T..0, i.e. bearing on the plate's rear face.
         {"name": "hex_nut", "stl": "hex_nut.stl", "color": "#c3ccd8",
          "group": "hardware", "explode": [0, 0, 60],
-         "instances": _ring(R_PUSH, TUBE_PLATE_T - (NUT_T + 0.4), orient=False)},
+         "instances": _ring(R_PUSH, TUBE_PLATE_T - (NUT_T + 0.4), orient=False)
+                      + _ring(R_PULL, -NUT_T, orient=False)},
         {"name": "washer", "stl": "washer.stl", "color": "#c3ccd8",
          "group": "hardware", "explode": [0, 0, -60],
          "instances": _ring(R_PUSH, Z_MP)},
         {"name": "pocket_cap", "stl": "pocket_cap.stl", "color": "#8a6a3a",
          "explode": [0, 0, 110], "instances": _ring(R_PULL, Z_CAP)},
-        # real McMaster solid; wings drawn radial, the worst case for knob clearance
-        {"name": "wingnut", "stl": "wingnut.stl", "color": "#c3ccd8",
-         "group": "hardware", "explode": [0, 0, -130],
-         # the vendor solid is modelled about its OWN origin: it must be moved out to
-         # the pull-bolt circle, not left at [0,0,0]
-         "instances": _ring(R_PULL, 0.0)},
         {"name": "shim", "stl": "shim.stl", "color": "#b0552f", "group": "shim",
          "explode": [0, 0, 150],
          "instances": [{"pos": [66 * cos(radians(a)), 66 * sin(radians(a)),
@@ -539,8 +584,11 @@ def assembly():
         "downloads": downloads(parts),
         # generated procedurally in the viewer from these numbers
         "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
-        # springs explode radially: axially they would stay buried between the plates
-        "springs": {"coil_d": SPRING_OD, "wire_d": 0.9, "z0": TUBE_PLATE_T, "z1": Z_MP,
+        # springs explode radially: axially they would stay buried between the plates.
+        # z0 is the BOTTOM OF THE SEAT, not the plate face -- the seat is part of the
+        # spring's span, which is the whole reason it costs preload.
+        "springs": {"coil_d": SPRING_OD, "wire_d": SPRING_WIRE_D,
+                    "z0": TUBE_PLATE_T - SPRING_SEAT_DEPTH, "z1": Z_MP,
                     "instances": [
                         {"pos": [R_PULL * cos(radians(a)), R_PULL * sin(radians(a)),
                                  (TUBE_PLATE_T + Z_MP) / 2],
@@ -647,20 +695,83 @@ def verify():
     chk(POST_T - M3_INSERT_D >= 3.0,
         f"post wall around M3 insert = {(POST_T-M3_INSERT_D)/2:.2f} mm each side")
 
-    # --- knobs must not foul the wing nuts (both live on the rear face) --------
-    kr = (R_PUSH - KNOB_D / 2, R_PUSH + KNOB_D / 2)
-    wr = (R_PULL - WING_SPAN / 2, R_PULL + WING_SPAN / 2)
-    radial = min(kr[1], wr[1]) - max(kr[0], wr[0])
-    kf = Z_MP - PUSH_BOLT_L
-    axial = min(kf, 0.0) - max(kf - KNOB_T, -WING_H)
-    chk(radial <= 0 or axial <= -2.0,
-        f"knob/wing-nut: radial overlap {radial:+.2f} mm, axial gap {-axial:+.2f} mm")
-    bolt_end = Z_PULL_HEAD_FACE - PULL_BOLT_L
-    engage = -bolt_end
-    # criterion is physical: the bolt must reach through the nut, not stop part way
-    chk(engage >= WING_H,
-        f"pull bolt reaches through the wing nut: {engage:.2f} mm vs {WING_H:.2f} mm tall "
-        f"({engage - WING_H:+.2f} mm proud)")
+    # --- the rear face: two printed knobs on one station ray (ADR-0002) --------
+    # THE invariant. It is radial, so unlike the axial escape it replaced it does not
+    # depend on bolt length or on where either adjuster happens to be set. Both parts
+    # shrink together, so the printed clearance is 0.993 of this -- a 0.7% effect.
+    knob_gap = (R_PULL - PULL_KNOB_D / 2) - (R_PUSH + PUSH_KNOB_D / 2)
+    chk(knob_gap >= 2.0,
+        f"push knob to pull knob = {knob_gap:.2f} mm, unconditional (>= 2.0)")
+
+    # Range of the pull side: unscrewing the knob opens the gap and pulls bolt out of
+    # the nut, so the thread runs out eventually. The spring should run out FIRST.
+    protrude = PULL_BOLT_L - Z_PULL_HEAD_FACE
+    thread_range = protrude - NUT_T
+    chk(thread_range > 0,
+        f"pull bolt reaches through its nut: {protrude:.2f} mm out, nut {NUT_T:.2f} tall "
+        f"({thread_range:+.2f} mm of range beyond it)")
+    # The mechanism must stop before the spring does, not after: at the widest gap the
+    # thread allows, the spring is still under load and still doing its job. (Written the
+    # other way round first -- "spring goes slack first" -- which is the softer failure
+    # but leaves settings where the cell is sprung by nothing.)
+    spring_range = SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)
+    chk(thread_range < spring_range,
+        f"thread runs out at +{thread_range:.2f} mm, still {spring_range-thread_range:.2f}"
+        f" mm inside the spring's +{spring_range:.2f} mm -- never slack in range")
+
+    # The push screw must still reach the mirror plate at the loosest setting the pull
+    # side can reach; if it cannot, one adjuster can outrun the other.
+    gap_max = PLATE_GAP + min(thread_range, spring_range)
+    standoff = PUSH_BOLT_L - TUBE_PLATE_T - PLATE_GAP
+    standoff_min = PUSH_BOLT_L - TUBE_PLATE_T - gap_max
+    chk(standoff_min > 2.0,
+        f"push knob stands off {standoff:.2f} mm at nominal, {standoff_min:.2f} mm at the "
+        f"widest gap the spring allows -- it never bottoms on the plate")
+
+    # Spring preload, computed from geometry rather than typed into the spec. The seat
+    # is part of the span: at 2.5 mm it quietly cost 40% of the preload.
+    preload = (SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)) * SPRING_RATE  # N
+    moving = 11.8  # N; 463 cc of glass at 2.35 plus ~0.12 kg of plate, clips, hardware
+    chk(3 * preload > 1.5 * moving,
+        f"spring preload {preload/4.4482:.2f} lb/station, {3*preload/4.4482:.2f} lb total "
+        f"vs {moving/4.4482:.2f} lb of moving assembly ({3*preload/moving:.2f}x)")
+
+    # The pull knob must never touch the plate: only the steel nut does.
+    chk(PULL_NUT_PROUD > 0.2,
+        f"nut stands {PULL_NUT_PROUD:.2f} mm proud of the pull knob face")
+
+    # Sourcing rule, as an assertion rather than a comment that rots.
+    halves = PUSH_BOLT_L / inch(0.5)
+    chk(PUSH_BOLT_L == PULL_BOLT_L and abs(halves - round(halves)) < 1e-6,
+        f"one bolt length throughout, and it is a 1/2\" multiple: {PUSH_BOLT_L/25.4:.3f}\"")
+
+    # The thing that started this: hardware hanging off the back of the tube plate.
+    stack_out = max(KNOB_T + PULL_NUT_PROUD, standoff + KNOB_T)
+    chk(stack_out < 28.0, f"rear stack-out {stack_out:.2f} mm at nominal (< 28.0)")
+
+    # --- knob walls: arithmetic, then the same thing against the solids --------
+    for nm, d, af in (("push", PUSH_KNOB_D, HEAD_AF), ("pull", PULL_KNOB_D, NUT_AF)):
+        corners = 2 * (af + FIT_PRESS) / sqrt(3.0)
+        wall = (d - 2 * KNOB_FLUTE_DEPTH - corners) / 2
+        chk(wall >= 2.0,
+            f"{nm} knob wall at a flute = {wall:.2f} mm (>= 2.0), "
+            f"hex {corners:.2f} across corners in ø{d:.0f}")
+    # Solid against solid: the flutes must not break into the pocket ANYWHERE. The
+    # arithmetic above assumes the phase lands flutes on flats; this does not assume it.
+    for nm, fn, d, af, h in (("push", push_knob, PUSH_KNOB_D, HEAD_AF, HEAD_T + 0.4),
+                             ("pull", pull_knob, PULL_KNOB_D, NUT_AF, NUT_T)):
+        pocket = Pos(0, 0, KNOB_T - h) * hex_prism(af, h, fit=FIT_PRESS)
+        flutes = Compound([at(30.0 + 360.0 * i / KNOB_FLUTES,
+                              d / 2 + KNOB_FLUTE_D / 2 - KNOB_FLUTE_DEPTH)
+                           * extrude(Circle(KNOB_FLUTE_D / 2), KNOB_T)
+                           for i in range(KNOB_FLUTES)])
+        try:
+            broke = (pocket & flutes).volume
+        except Exception:
+            broke = 0.0
+        chk(broke < 1.0,
+            f"{nm} knob: {KNOB_FLUTES} flutes never break into the hex pocket "
+            f"(overlap {broke:.2f} mm^3)")
 
     bolts = {b["kind"]: b for b in assembly()["bolts"]}
     push_dir = bolts["push"]["z_head"] - bolts["push"]["z_tip"]
@@ -671,8 +782,10 @@ def verify():
     chk(abs(bolts["pull"]["z_head"] - Z_PULL_HEAD_FACE) < 1e-9,
         "pull bolt head bears on the hex pocket floor")
 
-    sep = 2 * R_PUSH * sin(radians(60))
-    chk(sep - KNOB_D > 5.0, f"adjacent knobs clear each other by {sep-KNOB_D:.1f} mm")
+    for nm, r, d in (("push", R_PUSH, PUSH_KNOB_D), ("pull", R_PULL, PULL_KNOB_D)):
+        sep = 2 * r * sin(radians(60))
+        chk(sep - d > 5.0,
+            f"adjacent {nm} knobs clear each other by {sep-d:.1f} mm")
 
     # --- no part may have two instances at the same place ---------------------
     # (both the springs and the wing nuts have been stacked on the axis at some point,
@@ -735,18 +848,21 @@ def verify():
         "every download names a .step and a .stl")
     chk(all(d["step"] == f"build/{d['name']}.step" for d in printed),
         "printed downloads point at the files the exporter actually writes")
-    vendor = [d for d in D if d["kind"] == "vendor"]
-    chk(all(os.path.exists(d["step"]) for d in vendor),
-        f"vendor STEP present on disk: {[d['step'] for d in vendor]}")
+    chk(all(d["kind"] == "printed" for d in D),
+        "every download is a printed part -- no purchased solid is in the design now")
 
     # --- parts that sit in recesses must actually fit in them -----------------
     # Intersecting the placed solid with its plate catches a mis-keyed hex directly:
     # a nut rotated to its station angle collides with the pocket wall.
-    seated = {"hex_nut": "tube_plate", "washer": "mirror_plate",
-              "pocket_cap": "mirror_plate"}
+    seated = {"hex_nut": ("tube_plate", "pull_knob"), "washer": ("mirror_plate",),
+              "pocket_cap": ("mirror_plate",)}
     parts_by_name = {p["name"]: p for p in A["parts"]}
-    for nm, plate_nm in seated.items():
-        body = solid(plate_nm)
+    for nm, hosts in seated.items():
+        # A part may sit in more than one host now -- three of the six nuts are captured
+        # in the tube plate, three in the pull knobs. Intersecting against every host at
+        # once is right: a nut must clash with NONE of them, wherever it is.
+        body = Compound([Pos(*i["pos"]) * Rot(0, 0, i.get("rot", 0.0)) * solid(h)
+                         for h in hosts for i in parts_by_name[h]["instances"]])
         for inst in parts_by_name[nm]["instances"]:
             placed = Pos(*inst["pos"]) * Rot(0, 0, inst.get("rot", 0.0)) * solid(nm)
             try:
@@ -754,8 +870,8 @@ def verify():
             except Exception:
                 clash = 0.0
             chk(clash < 1.0,
-                f"{nm} at {inst.get('rot',0):.0f} deg seats in its {plate_nm} recess "
-                f"(overlap {clash:.2f} mm^3)")
+                f"{nm} at r={hypot(*inst['pos'][:2]):.0f} seats in its "
+                f"{'/'.join(hosts)} recess (overlap {clash:.2f} mm^3)")
 
     # --- the mirror plate must clear the tube wall as it tilts ----------------
     # Tilting shrinks a feature's projected radius (r.cos) but swings tall features out

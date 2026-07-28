@@ -10,11 +10,12 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 | `CONTEXT.md` | Glossary. Tube plate, Mirror plate, Station, Support point, Silicone dab, … |
 | `mirror-cell-spec.md` | The design, its numbers, and the reasoning behind them |
 | `docs/adr/0001-…md` | Why the support points sit at 0.75R rather than the PLOP optimum |
+| `docs/adr/0002-…md` | Why both rear controls are printed knobs clearing each other radially |
 | `mirror_cell.py` | The model. All dimensions are named variables at the top |
 | `test_coupon.py` | The ABS test coupons — the print that dials `FIT` |
 | `TEST-COUPON.md` | How to print them, how to read them, where the answer goes |
 | `index.html` | Assembly viewer — assembled/exploded, in the browser |
-| `90866A011_….STEP` | Vendor wing-nut solid (McMaster). Imported so clearances are checked against the real part |
+| `90866A011_….STEP` | Vendor wing-nut solid (McMaster). No longer part of the design — kept as ADR-0002's evidence |
 
 ## Build the geometry
 
@@ -22,7 +23,7 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 71 assertions, then writes `build/*.step`, `build/*.stl` and `build/assembly.json`.
+Runs 92 assertions, then writes `build/*.step`, `build/*.stl` and `build/assembly.json`.
 The assertions encode the spec — the three gaps that must never close, both fastener
 bearing floors, assembly clearances, spring travel, post placement, and printer bed fit.
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were
@@ -49,8 +50,8 @@ Two modes:
   clickable step list. Linkable as `#step=7`.
 - **Explore** — the explode slider and per-part visibility toggles.
 
-Under both is a **Download STEP** list: every printed part, both test coupons, and the
-vendor wing-nut solid, each with its STEP and (smaller) its STL. The list is generated —
+Under both is a **Download STEP** list: every printed part and both test coupons, each
+with its STEP and (smaller) its STL. The list is generated —
 printed parts from `assembly.json`, coupons from `coupons.json` — so it cannot offer a
 file the exporter does not write, and an assertion checks that it names every part in
 `PARTS` with the right quantity. The coupon rows appear once `test_coupon.py` has been
@@ -79,5 +80,10 @@ No cell part has been printed yet, but **the fit coupon has** (2026-07-28): 0.7�
 measured shrink, and the captured nut lands on the 0.10 rung, so `FIT_PRESS = 0.10`.
 That unblocks the tube plate. The mirror plate still waits on `FIT_SLIP = 0.20`, which is
 predicted from the shrink rather than measured — one 10-24 hex bolt in row H of the
-coupon settles it. See [TEST-COUPON.md](./TEST-COUPON.md). Plate and knob outlines are
-functional but aesthetically provisional.
+coupon settles it. See [TEST-COUPON.md](./TEST-COUPON.md).
+
+The rear end was reworked afterwards ([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)):
+both controls are printed knobs that clear each other radially, the wing nut is gone, and
+all six bolts are 10-24 × 1½″ machine screws. Print one pull knob and press a nut into its
+2.2 mm wall before committing to six. Plate and knob outlines are functional but
+aesthetically provisional.

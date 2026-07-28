@@ -22,13 +22,14 @@ python3 -m http.server 8018       # then open http://localhost:8018/
 | tube_plate | 1 | 204.7 cc | biggest print, ~3½ h |
 | mirror_plate | 1 | 166.0 cc | posts + root chamfer integral |
 | clip | 3 | 1.8 cc | separate — see traps |
-| knob | 3 | 8.0 cc | captures a hex head |
+| push_knob | 3 | 1.9 cc | captures a hex head |
+| pull_knob | 3 | 2.5 cc | captures a hex NUT — this is the ex-wing-nut |
 | pocket_cap | 3 | 0.16 cc | bedded in RTV, loose fit |
 | shim | 3 | 0.57 cc | assembly aid, removed after cure |
 
-Purchased: 6 × 10-24 × 2" hex-head bolts · 3 × 10-24 wing nuts (**McMaster 90866A011**,
-solid in repo) · 3 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm wire × 9 mm OD ×
-20 mm FL ≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
+Purchased: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
+6 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
+≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
 3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
 
 ## The print blocker, mostly cleared
@@ -38,8 +39,8 @@ solid in repo) · 3 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm w
 nut seats flat, will not rotate by hand, and leaves no stress whitening in the wall —
 all three acceptance criteria. The gauge outline measured 3.91″ × 1.95″ against a drawn
 3.937″ × 1.969″ — **0.7–0.9 % linear shrink**, inside the band the design assumed. The
-model now carries `FIT_PRESS = 0.10` (captured nut, knob) and `FIT_SLIP = 0.20`
-(pull-bolt head), passed explicitly at all three `hex_prism()` call sites.
+model now carries `FIT_PRESS = 0.10` (captured nuts and both knobs) and `FIT_SLIP = 0.20`
+(pull-bolt head), passed explicitly at every `hex_prism()` call site.
 
 **The tube plate is printable now.** Its only hex pocket is the nut pocket, and that
 number is measured. Read the two bores on `coupon_insert` first, though — the 10-24 one
@@ -55,6 +56,33 @@ pads, spring seat, both insert bores).
 Everything else that could have needed dialling in was deliberately engineered out — the
 pocket caps became a loose fit bedded in RTV precisely for this reason.
 
+**One new unknown, added deliberately.** `FIT_PRESS` was measured in a 6 mm coupon plate
+with material all around the pocket. Both knobs now put that pocket inside a **2.2 mm
+wall**, where a press can bulge the wall instead of gripping. Print **one pull knob**
+(~2.5 cc, ~15 min) and press a nut into it before committing to six. If it bulges, the fix
+is diameter.
+
+## The rear end was reworked, 2026-07-28
+
+See [ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md). Both rear controls
+are printed knobs — push Ø16, pull Ø18 capturing a plain hex nut — clearing each other
+**radially by 2.05 mm** instead of the old axial escape, which depended on bolt length *and
+on where the adjusters were set*. Consequences: the wing nut is gone, all six bolts are
+**10-24 × 1½" machine screws** (one length, a ½" multiple), six identical hex nuts, and
+rear stack-out falls from 36.9 mm to 24.2 mm.
+
+Grip is what this cost: a Ø18 fluted ABS knob is worse with cold fingers than a 0.875"
+steel wing nut, on the control you turn in the dark. Height is the free dimension now —
+nothing lives behind the knobs — so make them **taller before wider** if it disappoints.
+Wider spends the 2.05 mm the whole scheme rests on.
+
+**The spring preload was wrong and is fixed.** `SPRING_SEAT_DEPTH` had grown from 1.0 to
+2.5 mm, and the seat is part of the spring's span, so it silently threw away 40% of the
+preload: 1.16 lb per station against the 1.9 lb §7 claimed. Back to 1.0 mm → 1.92 lb per
+station, 5.77 lb total, 2.18× the moving assembly. `verify()` now computes preload from
+geometry, and `assembly.json` draws the spring from the seat bottom rather than the plate
+face, which was hiding 2.5 mm of its length in the viewer.
+
 ## Suggested slicer settings
 
 0.4 mm nozzle, 0.2 mm layers, both plates **rear-face-down, posts up, no supports needed**.
@@ -64,7 +92,7 @@ pocket caps became a loose fit bedded in RTV precisely for this reason.
 | tube_plate | 5 | 5 | 40% gyroid |
 | mirror_plate | 6 | **8** | 40% gyroid |
 | clip | 5 | 6 | 100% |
-| knob | 4 | 5 | 30% |
+| push_knob, pull_knob | 4 | 5 | 100% |
 | pocket_cap, shim | — | — | 100% |
 
 ABS: 250–255 °C, bed 100–110 °C, **enclosure closed, cooling 0–20%**, 8–10 mm brim. Don't
@@ -81,7 +109,13 @@ and the landing-pad recess ceilings are bridged.
   reaction drives its nut rearward into solid plastic. Every steel-to-plastic interface in
   this design is in compression, because ABS creeps under sustained tension.
 - **The pull bolt is reversed** relative to the push bolt: head forward, captured in the
-  mirror plate; wing nut outside at the rear.
+  mirror plate; nut outside at the rear, inside the pull knob.
+- **The pull knob's nut pocket is SHALLOWER than the nut** (`NUT_T - PULL_NUT_PROUD`), so
+  the nut stands 0.4 mm proud. That is not a mistake to "correct" to a flush fit: it is
+  what keeps steel, not ABS, bearing on the tube plate under sustained tension.
+- **Knob flute depth is set directly, not by the cutter radius.** The cutters sit outside
+  the rim. Centred on the rim, as they were at Ø30, a Ø5 cutter would cut 2.5 mm and leave
+  0.9 mm of wall. The 30° phase is cosmetic at 12 flutes — depth is what protects the wall.
 - **`_ring(..., orient=False)`** on the hex nuts. Pockets are cut by `at()`, a pure
   translation, so they all share one orientation; rotating a hex part to its station angle
   lands 30° out (90/210/330 are all 30 mod 60).
@@ -94,16 +128,21 @@ and the landing-pad recess ceilings are bridged.
 
 ## Open items / candidate tweaks
 
-- **`FIT`** — see above. The only blocker.
+- **`FIT_SLIP`** — predicted, not measured. Blocks the mirror plate only.
+- **The press fit in a 2.2 mm knob wall** — see above. Blocks the knobs only.
 - **Knob and plate outlines are functional but aesthetically provisional.** Never styled.
+  The knobs are now the *only* thing you touch, so they are the ones worth styling.
 - **Fan** — mounting holes exist on the tube plate, unpopulated. No fan specified or bought.
-- **Bolt heads, knob and springs are procedural stand-ins in the viewer.** Their hex phase
-  is not matched to anything, so a mis-keyed bolt head would still look fine. The wing nut,
-  hex nut and washer are real solids and *are* checked. Consider importing vendor solids
-  for the bolts too.
-- **Seating checks cover hex_nut, washer, pocket_cap only.** Extending the same
-  solid-vs-solid test to the bolt heads in their pockets and the clips on the post tops
-  would close the last unchecked fits.
+  There is room: the knobs sit at r ≥ 30 and a 40 mm fan lives inside r = 25.
+- **Bolt heads and springs are procedural stand-ins in the viewer.** Their hex phase is not
+  matched to anything, so a mis-keyed bolt head would still look fine. The hex nut and
+  washer are real solids and *are* checked. Consider importing a vendor solid for the bolts.
+- **Seating checks cover hex_nut (in both hosts), washer and pocket_cap.** Extending the
+  same solid-vs-solid test to the bolt heads in their knob pockets and the clips on the
+  post tops would close the last unchecked fits.
+- **§7's spring numbers are now computed, but the spring itself is still unbought.** The
+  rate is inferred from geometry (≈5.4 active coils at 0.9 mm wire, 8.1 mm mean coil); a
+  real spring's coil count may differ and moves the preload proportionally.
 - **Mirror plate thickness 0.375"** is resolved but tight — 3.45 mm of floor under the
   pull-bolt head. Any change to the RTV well or cap depths eats into it.
 

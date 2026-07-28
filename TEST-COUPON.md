@@ -24,7 +24,7 @@ parts it stands in for.
 | Feature | Where | What it decides |
 |---|---|---|
 | Six 10-24 **nut** pockets, row `N` | top face, fits 0.10 → 0.40 | `FIT` for the captured push-bolt nut (tube plate) |
-| Six 10-24 **head** pockets, row `H` | top face, same ladder | `FIT` for the captured pull-bolt head (mirror plate) *and* the knob |
+| Six 10-24 **head** pockets, row `H` | top face, same ladder | `FIT` for the captured pull-bolt head (mirror plate) *and* the push knob |
 | Ø12.0 × 1.5 counterbore | bottom left | printed cap disc into printed bore |
 | Two Ø13.0 / Ø13.3 pad recesses | **bed face** | the #10 washer landing pad |
 | Ø9.8 × 2.5 seat | bottom right | the spring drops in and does not bind |
@@ -89,10 +89,10 @@ question is functional.
    curing on the other side of the plate, so it must **fall in under its own weight** and
    sit flat — accept the tightest rung that does, with no more than a few degrees of
    rotational slop. That is the slip value.
-4. **Knob.** The knob uses the head pocket but wants capture rather than drop-in: if one
-   rung tighter than the row `H` answer presses on without cracking, use that for the
-   knob. There are three knobs and they are 8 cc each; this is a cheap thing to be wrong
-   about, unlike the plates.
+4. **Knobs.** Both knobs capture rather than accept on a timer, so they take the press
+   value from step 2, not the slip value from step 3. They are ~2 cc each; this is a cheap
+   thing to be wrong about, unlike the plates — but see the thin-wall caveat at the end,
+   because their pockets are not in a plate.
 5. **Cap counterbore.** A printed `pocket_cap` must drop in with obvious slack. It is
    bedded in RTV and is *supposed* to be loose — if it is a nice fit, that is a defect.
 6. **Landing pads (bed face).** A #10 washer should drop into the Ø13.0 recess and sit
@@ -111,16 +111,17 @@ question is functional.
 
 ## Feeding the answer back
 
-Three call sites cut hex pockets, and `hex_prism()` already takes a per-call `fit=`:
+Four call sites cut hex pockets, and `hex_prism()` takes a per-call `fit=`:
 
 | Call site | Pocket | Wants |
 |---|---|---|
-| `mirror_cell.py:233` — `tube_plate()` | captured 10-24 nut | press (step 2) |
-| `mirror_cell.py:267` — `mirror_plate()` | captured pull-bolt head | slip (step 3) |
-| `mirror_cell.py:299` — `knob()` | captured push-bolt head | press (step 4) |
+| `tube_plate()` | captured 10-24 nut | press (step 2) |
+| `mirror_plate()` | captured pull-bolt head | slip (step 3) |
+| `push_knob()` | captured push-bolt head | press (step 4) |
+| `pull_knob()` | captured 10-24 nut, 0.4 mm proud | press (step 4) |
 
-**This has been done** — `FIT` is now `FIT_PRESS = 0.10` (nut, knob) and
-`FIT_SLIP = 0.20` (pull-bolt head), passed explicitly at all three call sites. The one
+**This has been done** — `FIT` is now `FIT_PRESS = 0.10` (nuts and both knobs) and
+`FIT_SLIP = 0.20` (pull-bolt head), passed explicitly at every call site. The one
 thing to watch if you touch them again: `verify()` uses the fit to check that a bolt head
 passes through the cap bore and that the ledge under the cap survives, and that check is
 about the *mirror plate* pocket, so it is given `FIT_SLIP`. Pointed at the wrong constant
@@ -163,10 +164,16 @@ across-flats: `AF·S` is 0.06 mm rather than 0.08, so the head pocket comes out 
 0.01 mm looser than the nut pocket at the same rung — nowhere near enough to turn a
 press fit into something a bolt head falls into on its own. The pull-bolt head is fitted
 while the silicone is curing, so it must drop in; 0.20 is predicted to leave ≈ 0.13 mm,
-about 2° of rotational slop, which the wing nut takes out anyway. **Confirm it on row H
+about 2° of rotational slop, which the pull knob takes out anyway. **Confirm it on row H
 before printing the mirror plate** — one 10-24 hex bolt settles it, and six of them are
 on the buy list regardless.
 
 Still unread on this coupon: cap disc, landing pads, spring seat, clearance hole, and
 both bores on `coupon_insert`. The insert bores are worth doing before the tube plate
 goes on the bed, since the tube screws are what hold the cell in the telescope.
+
+**What this coupon does not test.** Every pocket here sits in a 6 mm plate with material
+all around it. Both knobs put the same pocket inside a **2.2 mm wall**
+([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)), where a press can
+bulge the wall instead of gripping. Print one `pull_knob` — the worse case, bigger nut,
+same wall — and press a nut into it before committing to six.

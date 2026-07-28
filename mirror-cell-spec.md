@@ -50,7 +50,7 @@ Support points are **coaxial with the pull bolts** — see [ADR-0001](./docs/adr
 **Axial stack**, measured from the Tube plate's rear face:
 
 ```
-0.0000  tube plate rear face   ← wing nuts and knobs live here
+0.0000  tube plate rear face   ← both knobs live here
 0.5000  tube plate front face
         ── 0.600" nominal spring gap ──
 1.1000  mirror plate rear face  ← landing pads here
@@ -60,8 +60,12 @@ Support points are **coaxial with the pull bolts** — see [ADR-0001](./docs/adr
 2.5675  clip underside          (0.030" air gap)
 ```
 
-The 0.600" gap is a **nominal, not a fixed dimension** — the wing nuts set the real value.
-The spring must neither coil-bind at minimum gap nor go slack at maximum.
+The 0.600" gap is a **nominal, not a fixed dimension** — the Pull knobs set the real value.
+The spring must neither coil-bind at minimum gap nor go slack at maximum. It cannot reach
+either: the pull bolt's thread runs out **3.41 mm** past nominal, and the spring does not
+go slack until **3.76 mm**, so the mechanism stops while the spring is still doing its job.
+The push side has to follow the pull side anywhere it can go — at the widest reachable gap
+the Push knob still stands **6.75 mm** off the plate rather than bottoming against it.
 
 ## 5. Parts
 
@@ -188,9 +192,24 @@ either jams or drops through. Nothing about this cap should need dialling in.
 0.0625" thick. Set the RTV bond thickness during cure, then pulled out. Replaces the
 toothpicks used previously — same thickness, now repeatable.
 
-### Collimation knobs (×3)
-Printed, capturing a hex bolt head in a **hex pocket** — a form fit, not friction, so the
-knob cannot slip on the bolt.
+### Push knobs (×3) and Pull knobs (×3)
+Both rear controls are printed, each capturing its steel in a **hex pocket** — a form fit,
+not friction, so neither can slip. The Push knob (Ø16 × 14) takes a bolt head and carries
+torque only. The Pull knob (Ø18 × 14) takes a plain 10-24 hex nut and **replaces the wing
+nut**; its nut stands **0.4 mm proud** of the printed face so steel bears on the tube plate
+and the ABS never does.
+
+They sit on one Station ray 19.05 mm apart and clear each other **radially by 2.05 mm** —
+unconditionally, unlike the axial escape this replaced, which depended on bolt length and
+on where the adjusters were set. See
+[ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md). The diameters are not
+free: the split equalises the walls, because the Pull knob's nut is 11.11 mm across corners
+against the Push knob's head at 9.28. Both walls land at ~2.2 mm after 12 flutes cut
+1.2 mm deep.
+
+A ½″ knurled thumb screw (e.g. Ondrives GPQ-23-3, Ø½″ head) drops into the Push knob's
+envelope with 5.6 mm to spare, and is a valid alternate if you would rather buy than print
+that end.
 
 ## 6. Why the nut pockets open forward
 
@@ -200,7 +219,7 @@ it, so its pocket opens *forward*, into the gap. The same is true of anything th
 into the Mirror plate.
 
 This is why the Pull bolt is **reversed**: a hex head captured in the Mirror plate, shank
-rearward through the spring, **wing nut on the outside**. Tension then loads a flat pocket
+rearward through the spring, **nut on the outside**. Tension then loads a flat pocket
 floor in **pure compression** — the one loading ABS handles without creeping — and nothing
 that can loosen is trapped under the mirror.
 
@@ -213,9 +232,8 @@ bearing directly on ABS would emboss a dimple and walk the collimation.
 
 | Qty | Item |
 |---|---|
-| 6 | 10-24 **hex-head** bolts, **all 2"** — one type *and* one length throughout |
-| 3 | 10-24 wing nuts — **McMaster 90866A011**, zinc-plated steel, 0.875" span × 0.500" tall |
-| 3 | 10-24 hex nuts (captured, push bolts) |
+| 6 | 10-24 **hex-head machine screws**, **all 1½"** — one type *and* one length throughout, and a ½" multiple |
+| 6 | 10-24 hex nuts — three captured in the Tube plate, three in the Pull knobs |
 | 3 | #10 flat washers, 0.5" OD (Landing pads) |
 | 3 | Compression springs — **0.9 mm wire × 9 mm OD × 20 mm free length, ≈ 13 lb/in** |
 | 3 | #10 screws + **1" fender washers** (tube mount) |
@@ -224,16 +242,29 @@ bearing directly on ABS would emboss a dimple and walk the collimation.
 | 3 | **M3 cap screws**, ~10 mm (clips) |
 | — | Black ABS; RTV silicone |
 
+**Machine screws, not cap screws.** A #10 hex *cap* screw carries an unthreaded shank about
+19 mm long — exactly where the captured nut in the Tube plate needs thread. Machine screws
+in this size are threaded to the head.
+
 **Springs — do not buy a "telescope collimation spring kit."** Those are sized for cells
 with no push bolts, where springs alone hold collimation; a typical ScopeStuff-style
 primary spring computes to **~152 lb/in**, over ten times what this wants, and you would
-never turn the wing nuts. Buy by **geometry**, not by rate — listings publish wire
+never turn the Pull knobs. Buy by **geometry**, not by rate — listings publish wire
 diameter and OD but rarely rate, and rate follows from `k = Gd⁴/8D³n`. Wire diameter
 dominates (fourth power): a common assortment kit at 1.4 mm wire computes to ~57 lb/in,
 still far too stiff.
 
-At the 0.600" gap, 13 lb/in gives **1.9 lb preload per Station, 5.7 lb total** against
-~2.6 lb of mirror and plate — seated in any tube orientation, still finger-turnable.
+At the 0.600" gap, 13 lb/in gives **1.92 lb preload per Station, 5.77 lb total** against
+2.65 lb of mirror and plate — **2.18×**, so the Mirror plate stays seated against its stop
+in any tube orientation while you adjust, and is still finger-turnable.
+
+**The spring's span is the gap *plus the seat*, and that is not a detail.** The seat is a
+counterbore in the Tube plate's front face, so every millimetre of it lengthens the spring
+and throws away preload. The figures above hold at the current **1.0 mm** seat. The seat
+was 2.5 mm for a while, which quietly cost 40% of the preload — 1.16 lb per Station,
+1.31× the moving assembly — and nothing caught it, because no assertion computed force
+from geometry. `verify()` now does, so the number in this paragraph and the geometry
+cannot drift apart again.
 
 **Fender washers** matter. Statically the three tube screws see ~70 psi against cardboard
 that's good for over 1000. The load case is **transport**: a 10 g knock puts ~700 psi on
@@ -282,8 +313,10 @@ over the 0.125" first proposed.
   only then bolt the Side clips on. There is no way to fit the mirror with clips in place.
 - Hex pocket clearances **must be dialled on an ABS test coupon** before printing either
   plate — ABS shrinks 0.6–0.8% and nominal dimensions will not fit.
-- Collimate by backing off the push bolts, setting tilt with the wing nuts, then snugging
-  the push bolts. The cell is deliberately *soft* while adjusting and stiff once locked.
+- Press each Pull knob's nut in until it stands 0.4 mm proud of the printed face, not
+  flush. If the printed face reaches the plate, ABS turns on ABS under tension and creeps.
+- Collimate by backing off the Push knobs, setting tilt with the Pull knobs, then snugging
+  the Push knobs. The cell is deliberately *soft* while adjusting and stiff once locked.
 
 ## 10. Open items
 
@@ -293,21 +326,23 @@ over the 0.125" first proposed.
   — cutting one would have left 0.95 mm of ABS under that floor. The spring is located by
   its tube-plate seat and the bolt shank, and bears on the flat face.
 - ~~Center bore~~ — **resolved at 1.500"**, see §5.
-- **Hex pocket clearance (`FIT`, currently 0.25 mm) — still needs an ABS test coupon.**
-  This is the one number the model cannot check for you.
-- ~~Exact bolt lengths~~ — **resolved: all six are 1¾".** Push bolts were 1½", which put
-  the Collimation knobs into the wing nuts: they overlap **5.45 mm radially** (knob reaches
-  r=53.1, wing nut reaches r=47.6, and both sit on the same Station ray), so they must
-  clear *axially* instead. Against the **measured** McMaster 90866A011 the radial overlap
-  is 7.06 mm, and 2" bolts give **10.16 mm** of axial clearance while also letting the pull
-  bolt reach fully through the wing nut (3.14 mm proud) — and every bolt in the cell is
-  identical.
-
-  The wing nut envelope is measured from the vendor STEP file (kept in the repo), not from
-  catalogue figures; my first estimates, 19.0 × 11.0 mm, were both undersized. **A wing nut
-  turns, so its wings can point anywhere** — clearance is checked in the worst case, wings
-  radial.
-- Knob and plate outline shapes — aesthetic, provisional.
+- ~~Hex pocket clearance~~ — **measured on `coupon_fit`, 2026-07-28**: `FIT_PRESS = 0.10`
+  (captured nut and both knobs; the nut seats flat, will not rotate, no whitening) at
+  0.7–0.9% linear shrink. `FIT_SLIP = 0.20` for the Mirror plate's pull-bolt head is
+  **predicted from that shrink, not measured** — no 10-24 hex head was on hand. See
+  [TEST-COUPON.md](./TEST-COUPON.md).
+- ~~Exact bolt lengths~~ — **resolved: all six are 1½".** Formerly 2", a length that
+  existed only to drop a Ø30 knob below a wing nut it overlapped by 7.06 mm radially. Both
+  rear controls are printed knobs now and clear each other *radially*, so nothing needs
+  length to escape anything — see
+  [ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md). 1½" is a ½" multiple,
+  which is what shops stock.
+- Knob and plate outline shapes — aesthetic, provisional. The knobs are functional at Ø16
+  and Ø18 but grip is the thing ADR-0002 gave up, and **height is the free dimension** now
+  that nothing lives behind them.
+- **Untested: the hex press fit in a 2.2 mm knob wall.** `FIT_PRESS` was measured in a
+  6 mm coupon plate with material all around it. Print one Pull knob and press a nut into
+  it before committing to six.
 - No fan is specified or bought; only the mounting holes exist.
 
 ## 11. Load-bearing decisions, and what would overturn them
@@ -320,3 +355,11 @@ over the 0.125" first proposed.
   makes support placement matter again, and this design should not be reused for one.
 - **Nominal-dimension convention against the tube** (§5), confirmed by a real test fit —
   not by calculation. Re-verify if the filament or printer changes.
+- **Rear clearance is radial, not axial** ([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)).
+  It holds for any bolt length and any adjuster position, which the axial arrangement it
+  replaced did not. **Tripwire:** enlarging either knob, or putting any purchased part back
+  on the pull station, spends the 2.05 mm that makes it true — and a wing nut spends all of
+  it and 5 mm besides.
+- **Spring preload is computed from geometry, never typed in** (§7). It is the product of
+  free length, rate, gap *and seat depth*, and it has already been broken once by a change
+  to the seat that looked unrelated.

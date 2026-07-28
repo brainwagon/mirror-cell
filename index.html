@@ -247,9 +247,10 @@ function bolt(d, zHead, zTip, headT, headAF) {
 let SEQ = [], step = 0, mode = 'build', playing = null, anim = null;
 
 const LABEL = {
-  tube_plate: 'Tube plate', mirror_plate: 'Mirror plate', knob: 'Knobs', clip: 'Clips',
-  pocket_cap: 'Pocket caps', shim: 'Shims', wingnut: 'Wing nuts',
-  hex_nut: 'Captured nuts', washer: 'Landing pads', mirror: 'Mirror',
+  tube_plate: 'Tube plate', mirror_plate: 'Mirror plate', clip: 'Clips',
+  push_knob: 'Push knobs', pull_knob: 'Pull knobs',
+  pocket_cap: 'Pocket caps', shim: 'Shims',
+  hex_nut: 'Hex nuts', washer: 'Landing pads', mirror: 'Mirror',
   springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts' };
 
 async function build() {
