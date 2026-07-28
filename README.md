@@ -11,6 +11,8 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 | `mirror-cell-spec.md` | The design, its numbers, and the reasoning behind them |
 | `docs/adr/0001-…md` | Why the support points sit at 0.75R rather than the PLOP optimum |
 | `mirror_cell.py` | The model. All dimensions are named variables at the top |
+| `test_coupon.py` | The ABS test coupons — the print that dials `FIT` |
+| `TEST-COUPON.md` | How to print them, how to read them, where the answer goes |
 | `index.html` | Assembly viewer — assembled/exploded, in the browser |
 | `90866A011_….STEP` | Vendor wing-nut solid (McMaster). Imported so clearances are checked against the real part |
 
@@ -47,6 +49,14 @@ Two modes:
   clickable step list. Linkable as `#step=7`.
 - **Explore** — the explode slider and per-part visibility toggles.
 
+Under both is a **Download STEP** list: every printed part, both test coupons, and the
+vendor wing-nut solid, each with its STEP and (smaller) its STL. The list is generated —
+printed parts from `assembly.json`, coupons from `coupons.json` — so it cannot offer a
+file the exporter does not write, and an assertion checks that it names every part in
+`PARTS` with the right quantity. The coupon rows appear once `test_coupon.py` has been
+run; until then the panel says so. `build/` is gitignored, so the files are whatever your
+last run produced.
+
 Drag to orbit, scroll to zoom, right-drag to pan.
 
 **The instructions are not written in the HTML.** `sequence()` in `mirror_cell.py` emits
@@ -65,7 +75,9 @@ JavaScript, so the picture cannot drift away from the parts.
 
 ## Status
 
-Geometry is checked but **nothing has been printed from this model**. Before committing to
-a multi-hour tube plate print, dial `FIT` (the hex pocket clearance, currently a 0.25 mm
-placeholder) on an ABS test coupon — ABS shrinks 0.6–0.8% and nominal pockets will not
-fit. Plate and knob outlines are functional but aesthetically provisional.
+No cell part has been printed yet, but **the fit coupon has** (2026-07-28): 0.7–0.9 %
+measured shrink, and the captured nut lands on the 0.10 rung, so `FIT_PRESS = 0.10`.
+That unblocks the tube plate. The mirror plate still waits on `FIT_SLIP = 0.20`, which is
+predicted from the shrink rather than measured — one 10-24 hex bolt in row H of the
+coupon settles it. See [TEST-COUPON.md](./TEST-COUPON.md). Plate and knob outlines are
+functional but aesthetically provisional.

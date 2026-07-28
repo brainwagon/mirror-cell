@@ -4,8 +4,7 @@ Written 2026-07-28. State of play, what is settled, what is not, and where the t
 Read [README.md](./README.md) for how to run things, [mirror-cell-spec.md](./mirror-cell-spec.md)
 for the design and its reasoning, [CONTEXT.md](./CONTEXT.md) for vocabulary.
 
-**Not a git repo.** Nothing here is under version control yet — `git init` before making
-substantial changes if you want to be able to back out.
+Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
@@ -32,13 +31,29 @@ solid in repo) · 3 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm w
 20 mm FL ≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
 3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
 
-## The one thing blocking a print
+## The print blocker, mostly cleared
 
-**`FIT` (mirror_cell.py) is a 0.25 mm placeholder** for hex-pocket clearance. ABS shrinks
-0.6–0.8% and no assertion can verify it. **Print an ABS test coupon with the 10-24 nut
-pocket and the hex-head pocket before committing to the tube plate.** Everything else that
-could have needed dialling in has been deliberately engineered out (the pocket caps became
-a loose fit bedded in RTV precisely for this reason).
+`FIT` was a 0.25 mm placeholder for hex-pocket clearance, unverifiable by any assertion.
+**`coupon_fit` has now been printed and read** (2026-07-28): on the **0.10** rung the 10-24
+nut seats flat, will not rotate by hand, and leaves no stress whitening in the wall —
+all three acceptance criteria. The gauge outline measured 3.91″ × 1.95″ against a drawn
+3.937″ × 1.969″ — **0.7–0.9 % linear shrink**, inside the band the design assumed. The
+model now carries `FIT_PRESS = 0.10` (captured nut, knob) and `FIT_SLIP = 0.20`
+(pull-bolt head), passed explicitly at all three `hex_prism()` call sites.
+
+**The tube plate is printable now.** Its only hex pocket is the nut pocket, and that
+number is measured. Read the two bores on `coupon_insert` first, though — the 10-24 one
+is horizontal with 3.1 mm of roof over it, and the tube screws are what hold the cell in
+the telescope.
+
+**The mirror plate is not.** `FIT_SLIP` is predicted from the measured shrink, not
+measured: no 10-24 hex bolt was on hand. One bolt in row H of the coupon settles it, and
+six are on the buy list anyway. Full working in [TEST-COUPON.md](./TEST-COUPON.md), which
+also has the slicer settings and what is still unread on the coupon (cap disc, landing
+pads, spring seat, both insert bores).
+
+Everything else that could have needed dialling in was deliberately engineered out — the
+pocket caps became a loose fit bedded in RTV precisely for this reason.
 
 ## Suggested slicer settings
 

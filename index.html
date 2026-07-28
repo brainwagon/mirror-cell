@@ -59,6 +59,22 @@
   #stepCaution b { color:var(--warn); }
   #err { position:fixed; inset:0; display:none; place-content:center; text-align:center;
          padding:40px; background:var(--bg); }
+
+  /* downloads */
+  #dl .row { display:flex; align-items:baseline; gap:6px; padding:3.5px 0;
+             border-bottom:1px solid #232932; }
+  #dl .nm { flex:1; font-size:11.5px; }
+  #dl .nm em { font-style:normal; color:var(--dim); font-size:10.5px; }
+  #dl .q { color:var(--dim); font-size:10.5px; font-variant-numeric:tabular-nums; }
+  #dl a { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10.5px;
+          text-decoration:none; color:var(--ink); background:#252b34;
+          border:1px solid var(--line); }
+  #dl a:hover { background:var(--hi); border-color:var(--hi); color:#1a1408; }
+  #dl a.stl { color:var(--dim); background:transparent; border-color:transparent;
+              padding-left:2px; }
+  #dl a.stl:hover { color:var(--hi); background:transparent; }
+  #dl .grp { color:var(--dim); font-size:10.5px; margin:9px 0 2px; }
+  #dl .miss { color:var(--dim); font-size:11px; margin-top:7px; }
 </style>
 </head>
 <body>
@@ -102,10 +118,14 @@
   <h2>Axial stack (mm)</h2>
   <table id="stack"></table>
 
+  <h2>Download STEP</h2>
+  <div id="dl"></div>
+
   <div class="note">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan
     &middot; &larr;/&rarr; to step. Everything here is read from
     <code>build/assembly.json</code>, written by <code>mirror_cell.py</code> &mdash; the
-    instructions and the geometry come from the same source.</div>
+    instructions, the geometry and the download list come from the same source. Coupons
+    come from <code>build/coupons.json</code> (<code>test_coupon.py</code>).</div>
 </div>
 
 <div id="err"><div>
@@ -236,6 +256,14 @@ async function build() {
   const A = await (await fetch('build/assembly.json')).json();
   SEQ = A.sequence;
 
+  // The coupons are a separate build step and may not have been run; their absence is
+  // normal, not an error, so it must not take the page down with it.
+  let coupons = null;
+  try {
+    const r = await fetch('build/coupons.json');
+    if (r.ok) coupons = await r.json();
+  } catch (e) { /* not built yet */ }
+
   await Promise.all(A.parts.map(async p => {
     const geo = parseSTL(await (await fetch('build/' + p.stl)).arrayBuffer());
     const mat = p.group === 'hardware' ? steel : absMat(p.color);
@@ -273,6 +301,7 @@ async function build() {
   }
 
   buildUI(A);
+  renderDownloads([...A.downloads, ...(coupons ? coupons.downloads : [])], !!coupons);
   gotoStep(step, true);
   fitMode();
 }
@@ -383,6 +412,39 @@ function buildUI(A) {
 
   const m = /step=(\d+)/.exec(location.hash);
   if (m) step = Math.max(0, Math.min(SEQ.length - 1, +m[1] - 1));
+}
+
+/* ---- downloads ----
+   The list is not written here: mirror_cell.py emits every part it exports into
+   assembly.json, and test_coupon.py emits the coupons into coupons.json. A part that
+   this page could offer but the exporter never wrote is exactly the bug the manifests
+   exist to prevent, so nothing is hard-coded below except the group headings. */
+const GROUP = { printed: 'Printed parts', coupon: 'Test coupons', vendor: 'Purchased' };
+
+function dlRow(d) {
+  const name = d.label || LABEL[d.name] || d.name;
+  const note = d.note ? ` <em>${d.note}</em>` : '';
+  const qty = d.qty > 1 ? `<span class="q">&times;${d.qty}</span>` : '';
+  // download= makes the browser save the file rather than try to display it; the
+  // vendor STEP has spaces in its name, hence the encode.
+  const href = d.step.split('/').map(encodeURIComponent).join('/');
+  const file = d.step.split('/').pop();
+  return `<div class="row"><span class="nm">${name}${note}</span>${qty}
+    <a href="${href}" download="${file}" title="${d.step}">STEP</a>
+    <a class="stl" href="${d.stl}" download title="${d.stl}">STL</a></div>`;
+}
+
+function renderDownloads(list, haveCoupons) {
+  for (const kind of ['printed', 'coupon', 'vendor']) {
+    const rows = list.filter(d => d.kind === kind);
+    if (!rows.length) continue;
+    dl.insertAdjacentHTML('beforeend', `<div class="grp">${GROUP[kind]}</div>`);
+    for (const d of rows) dl.insertAdjacentHTML('beforeend', dlRow(d));
+  }
+  if (!haveCoupons)
+    dl.insertAdjacentHTML('beforeend',
+      '<div class="miss">Test coupons: run <code>python3 test_coupon.py</code> ' +
+      'to build them &mdash; see <code>TEST-COUPON.md</code>.</div>');
 }
 
 prev.onclick = () => { stopPlay(); gotoStep(step - 1); };

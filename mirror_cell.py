@@ -77,7 +77,20 @@ NUT_AF = inch(0.375)  # 10-24 hex nut across flats
 NUT_T = inch(0.130)
 HEAD_AF = inch(0.3125)  # 10-24 hex head across flats
 HEAD_T = inch(0.125)
-FIT = 0.25  # clearance added to hex pockets. DIAL ON A TEST COUPON.
+# Clearance added across flats of a hex pocket. MEASURED on coupon_fit, 2026-07-28: on
+# the 0.10 rung a 10-24 nut seats flat, will not rotate by hand and leaves the wall
+# unwhitened -- all three acceptance criteria. The gauge outline came off the bed at
+# 3.91" x 1.95" against a drawn 3.937" x 1.969" -- 0.7-0.9% linear shrink. The old 0.25
+# placeholder would have left the nut about 0.17 mm loose in its pocket, free to rock.
+FIT_PRESS = 0.10   # captured nut, and the knob's captured head. MEASURED.
+# The pull-bolt head is fitted with silicone already curing on the other side of the
+# plate, so it must fall in under its own weight -- a fit you have to tap is a defect
+# there. UNVERIFIED: no 10-24 hex bolt was on hand when the coupon was read. Predicted
+# from the measured shrink, this leaves ~0.13 mm of clearance (about 2 deg of rotational
+# slop, which the wing nut takes out) against ~0.04 mm at FIT_PRESS.
+FIT_SLIP = 0.20    # captured pull-bolt head. CONFIRM ON THE COUPON BEFORE PRINTING
+                   # THE MIRROR PLATE -- rung 0.20, row H.
+FIT = FIT_PRESS    # default for hex_prism(); every call site passes one explicitly
 
 INSERT_BORE_D = 6.5  # 10-24 heat-set insert
 INSERT_DEPTH = 14.0
@@ -230,7 +243,7 @@ def tube_plate():
         # --- push bolt: clearance through + hex nut pocket OPENING FORWARD -----
         p -= at(a, R_PUSH) * extrude(Circle(BOLT_CLEAR_D / 2), TUBE_PLATE_T)
         pocket_z = TUBE_PLATE_T - (NUT_T + 0.4)
-        p -= at(a, R_PUSH, pocket_z) * hex_prism(NUT_AF, NUT_T + 0.4)
+        p -= at(a, R_PUSH, pocket_z) * hex_prism(NUT_AF, NUT_T + 0.4, fit=FIT_PRESS)
 
         # --- pull bolt: clearance through + spring seat on the FRONT face ------
         p -= at(a, R_PULL) * extrude(Circle(BOLT_CLEAR_D / 2), TUBE_PLATE_T)
@@ -264,7 +277,7 @@ def mirror_plate():
         cap_z = well_z - CAP_T
         p -= at(a, R_PULL, cap_z) * extrude(Circle(CAP_D / 2), CAP_T)
         head_h = HEAD_T + 0.4
-        p -= at(a, R_PULL, cap_z - head_h) * hex_prism(HEAD_AF, head_h)
+        p -= at(a, R_PULL, cap_z - head_h) * hex_prism(HEAD_AF, head_h, fit=FIT_SLIP)
 
         # No spring seat on this face. Cutting one here would leave only 0.95 mm of ABS
         # between it and the hex pocket floor that the pull bolt head bears on. The
@@ -296,7 +309,10 @@ def knob():
     for i in range(KNOB_FLUTES):
         a = 360.0 * i / KNOB_FLUTES
         k -= at(a, KNOB_D / 2) * extrude(Circle(KNOB_FLUTE_D / 2), KNOB_T)
-    k -= Pos(0, 0, KNOB_T - (HEAD_T + 0.4)) * hex_prism(HEAD_AF, HEAD_T + 0.4)
+    # The knob CAPTURES its head rather than accepting it during a timed assembly step,
+    # so it takes the press value even though the pocket is head-sized.
+    k -= Pos(0, 0, KNOB_T - (HEAD_T + 0.4)) * hex_prism(HEAD_AF, HEAD_T + 0.4,
+                                                        fit=FIT_PRESS)
     k -= extrude(Circle(BOLT_CLEAR_D / 2), KNOB_T)
     return k
 
@@ -463,7 +479,55 @@ def sequence():
     return [{"title": t, "detail": d, "caution": c, "pose": p} for t, d, c, p in steps]
 
 
+def downloads(parts):
+    """What the viewer offers for download. Driven by PARTS, so a part cannot be exported
+    without appearing here, and quantities are counted off the assembly, so the list
+    cannot disagree with the picture it sits under. Coupons are not here: test_coupon.py
+    writes its own manifest, because this file must not import it (it imports this one)."""
+    qty = {p["name"]: len(p["instances"]) for p in parts}
+    out = [{"name": n, "kind": "printed", "qty": qty.get(n, 1),
+            "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in PARTS]
+    # The one purchased part that has a real solid: the vendor's own STEP, at the repo
+    # root rather than in build/ -- it is an input to this design, not an output of it.
+    out.append({"name": "wingnut", "label": "Wing nut (McMaster 90866A011)",
+                "kind": "vendor", "qty": qty.get("wingnut", 3),
+                "step": WINGNUT_STEP, "stl": "build/wingnut.stl"})
+    return out
+
+
 def assembly():
+    parts = [
+        {"name": "tube_plate", "stl": "tube_plate.stl", "color": "#3d4450",
+         "explode": [0, 0, -90], "instances": [{"pos": [0, 0, 0], "rot": 0}]},
+        {"name": "mirror_plate", "stl": "mirror_plate.stl", "color": "#4a5260",
+         "explode": [0, 0, 40], "instances": [{"pos": [0, 0, Z_MP], "rot": 0}]},
+        {"name": "knob", "stl": "knob.stl", "color": "#8a6a3a",
+         "explode": [0, 0, -170],
+         "instances": _ring(R_PUSH, Z_MP - PUSH_BOLT_L - KNOB_T)},
+        {"name": "clip", "stl": "clip.stl", "color": "#5f6a7a",
+         "explode": [0, 0, 95],
+         "instances": [{"pos": [0, 0, Z_MP + MIRROR_PLATE_T + POST_H], "rot": a}
+                       for a in STATIONS]},
+        {"name": "hex_nut", "stl": "hex_nut.stl", "color": "#c3ccd8",
+         "group": "hardware", "explode": [0, 0, 60],
+         "instances": _ring(R_PUSH, TUBE_PLATE_T - (NUT_T + 0.4), orient=False)},
+        {"name": "washer", "stl": "washer.stl", "color": "#c3ccd8",
+         "group": "hardware", "explode": [0, 0, -60],
+         "instances": _ring(R_PUSH, Z_MP)},
+        {"name": "pocket_cap", "stl": "pocket_cap.stl", "color": "#8a6a3a",
+         "explode": [0, 0, 110], "instances": _ring(R_PULL, Z_CAP)},
+        # real McMaster solid; wings drawn radial, the worst case for knob clearance
+        {"name": "wingnut", "stl": "wingnut.stl", "color": "#c3ccd8",
+         "group": "hardware", "explode": [0, 0, -130],
+         # the vendor solid is modelled about its OWN origin: it must be moved out to
+         # the pull-bolt circle, not left at [0,0,0]
+         "instances": _ring(R_PULL, 0.0)},
+        {"name": "shim", "stl": "shim.stl", "color": "#b0552f", "group": "shim",
+         "explode": [0, 0, 150],
+         "instances": [{"pos": [66 * cos(radians(a)), 66 * sin(radians(a)),
+                                Z_MP + MIRROR_PLATE_T], "rot": a}
+                       for a in (30.0, 150.0, 270.0)]},
+    ]
     return {
         "stack": {
             "tube_plate_front": TUBE_PLATE_T, "mirror_plate_rear": Z_MP,
@@ -471,38 +535,8 @@ def assembly():
             "clip_underside": Z_MP + MIRROR_PLATE_T + POST_H,
         },
         "sequence": sequence(),
-        "parts": [
-            {"name": "tube_plate", "stl": "tube_plate.stl", "color": "#3d4450",
-             "explode": [0, 0, -90], "instances": [{"pos": [0, 0, 0], "rot": 0}]},
-            {"name": "mirror_plate", "stl": "mirror_plate.stl", "color": "#4a5260",
-             "explode": [0, 0, 40], "instances": [{"pos": [0, 0, Z_MP], "rot": 0}]},
-            {"name": "knob", "stl": "knob.stl", "color": "#8a6a3a",
-             "explode": [0, 0, -170],
-             "instances": _ring(R_PUSH, Z_MP - PUSH_BOLT_L - KNOB_T)},
-            {"name": "clip", "stl": "clip.stl", "color": "#5f6a7a",
-             "explode": [0, 0, 95],
-             "instances": [{"pos": [0, 0, Z_MP + MIRROR_PLATE_T + POST_H], "rot": a}
-                           for a in STATIONS]},
-            {"name": "hex_nut", "stl": "hex_nut.stl", "color": "#c3ccd8",
-             "group": "hardware", "explode": [0, 0, 60],
-             "instances": _ring(R_PUSH, TUBE_PLATE_T - (NUT_T + 0.4), orient=False)},
-            {"name": "washer", "stl": "washer.stl", "color": "#c3ccd8",
-             "group": "hardware", "explode": [0, 0, -60],
-             "instances": _ring(R_PUSH, Z_MP)},
-            {"name": "pocket_cap", "stl": "pocket_cap.stl", "color": "#8a6a3a",
-             "explode": [0, 0, 110], "instances": _ring(R_PULL, Z_CAP)},
-            # real McMaster solid; wings drawn radial, the worst case for knob clearance
-            {"name": "wingnut", "stl": "wingnut.stl", "color": "#c3ccd8",
-             "group": "hardware", "explode": [0, 0, -130],
-             # the vendor solid is modelled about its OWN origin: it must be moved out to
-             # the pull-bolt circle, not left at [0,0,0]
-             "instances": _ring(R_PULL, 0.0)},
-            {"name": "shim", "stl": "shim.stl", "color": "#b0552f", "group": "shim",
-             "explode": [0, 0, 150],
-             "instances": [{"pos": [66 * cos(radians(a)), 66 * sin(radians(a)),
-                                    Z_MP + MIRROR_PLATE_T], "rot": a}
-                           for a in (30.0, 150.0, 270.0)]},
-        ],
+        "parts": parts,
+        "downloads": downloads(parts),
         # generated procedurally in the viewer from these numbers
         "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
         # springs explode radially: axially they would stay buried between the plates
@@ -550,9 +584,14 @@ def verify():
     chk(nut_floor >= 3.0, f"tube plate floor under nut pocket = {nut_floor:.2f} mm")
 
     # --- bolt head must pass through the cap bore during assembly -------------
-    head_corners = 2 * (HEAD_AF + FIT) / sqrt(3.0)
+    # FIT_SLIP, not FIT_PRESS: this is the MIRROR PLATE's pocket. Pointed at the wrong
+    # constant these three checks would still pass and would be checking nothing.
+    head_corners = 2 * (HEAD_AF + FIT_SLIP) / sqrt(3.0)
     chk(head_corners < CAP_D,
         f"head across corners {head_corners:.2f} < cap bore {CAP_D:.2f} mm")
+    chk(0 < FIT_PRESS <= FIT_SLIP,
+        f"press fit {FIT_PRESS:.2f} is positive and no looser than the slip fit "
+        f"{FIT_SLIP:.2f} mm")
     cap_d = CAP_D - CAP_CLEAR
     chk(CAP_CLEAR > 0, f"cap is a clearance fit ({CAP_CLEAR} mm), never a press fit")
     chk((CAP_D - head_corners) / 2 >= 1.0,
@@ -673,6 +712,32 @@ def verify():
     final = set(A["sequence"][-1]["pose"])
     chk(final == drawable - {"shim"},
         f"final step shows everything but the shims; missing {drawable-{'shim'}-final}")
+
+    # --- the download list must offer every printed part, and no ghosts --------
+    # The failure this guards against is silent: a part added to PARTS and exported but
+    # missing from the viewer's list, or a stale entry pointing at a file that stopped
+    # being written. Quantities are checked against the assembly so the list cannot
+    # promise three of something the picture shows one of.
+    import os
+    D = A["downloads"]
+    printed = [d for d in D if d["kind"] == "printed"]
+    listed = {d["name"] for d in printed}
+    chk(listed == set(PARTS),
+        f"downloads offer every printed part; missing {set(PARTS) - listed}, "
+        f"stray {listed - set(PARTS)}")
+    chk(len({d["name"] for d in D}) == len(D), "no part is listed for download twice")
+    inst = {p["name"]: len(p["instances"]) for p in A["parts"]}
+    chk(all(d["qty"] == inst[d["name"]] for d in D if d["name"] in inst),
+        "download quantities match the instance counts in the assembly")
+    # (case-insensitive: the vendor file is .STEP, and that is McMaster's spelling)
+    chk(all(d["step"].lower().endswith(".step") and d["stl"].endswith(".stl")
+            for d in D),
+        "every download names a .step and a .stl")
+    chk(all(d["step"] == f"build/{d['name']}.step" for d in printed),
+        "printed downloads point at the files the exporter actually writes")
+    vendor = [d for d in D if d["kind"] == "vendor"]
+    chk(all(os.path.exists(d["step"]) for d in vendor),
+        f"vendor STEP present on disk: {[d['step'] for d in vendor]}")
 
     # --- parts that sit in recesses must actually fit in them -----------------
     # Intersecting the placed solid with its plate catches a mis-keyed hex directly:
