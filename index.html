@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>6" Mirror Cell — Assembly Viewer</title>
+<style>
+  :root { --bg:#14171c; --panel:#1c2027; --line:#2c323c; --ink:#dfe4ec; --dim:#8b95a5;
+          --hi:#e0a458; --warn:#e07a5f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden;
+              background:var(--bg); color:var(--ink);
+              font:13px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  #view { position:fixed; inset:0; }
+  #panel { position:fixed; top:0; left:0; width:310px; height:100vh; overflow-y:auto;
+           padding:18px; background:rgba(28,32,39,.95); border-right:1px solid var(--line);
+           backdrop-filter:blur(8px); }
+  h1 { font-size:15px; margin:0 0 2px; }
+  .sub { color:var(--dim); font-size:11.5px; margin-bottom:14px; }
+  h2 { font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+       margin:16px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--line);
+       font-weight:600; }
+  .tabs { display:flex; gap:6px; margin-bottom:4px; }
+  .tabs button { flex:1; }
+  button { padding:6px 8px; font:inherit; font-size:11.5px; cursor:pointer;
+           color:var(--ink); background:#252b34; border:1px solid var(--line);
+           border-radius:5px; }
+  button:hover { background:#2f3742; border-color:#404a58; }
+  button[aria-pressed="true"] { background:var(--hi); border-color:var(--hi); color:#1a1408;
+                                font-weight:600; }
+  button:disabled { opacity:.35; cursor:default; }
+  .btns { display:flex; gap:6px; margin-top:9px; }
+  .btns button { flex:1; }
+  input[type=range] { width:100%; accent-color:var(--hi); }
+  label { display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; }
+  label input { accent-color:var(--hi); }
+  .sw { width:11px; height:11px; border-radius:2.5px; flex:none; }
+  table { width:100%; border-collapse:collapse; font-size:11.5px; }
+  td { padding:2.5px 0; color:var(--dim); }
+  td.v { text-align:right; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .note { font-size:11px; color:var(--dim); margin-top:14px; padding-top:12px;
+          border-top:1px solid var(--line); }
+  code { background:#252b34; padding:1px 5px; border-radius:3px; font-size:12px; }
+
+  /* build mode */
+  ol#steps { list-style:none; margin:0; padding:0; }
+  ol#steps li { display:flex; gap:8px; padding:5px 7px; border-radius:5px; cursor:pointer;
+                color:var(--dim); font-size:11.5px; align-items:baseline; }
+  ol#steps li:hover { background:#232932; }
+  ol#steps li.on { background:#2b323d; color:var(--ink); }
+  ol#steps li.done { color:#6f7c8d; }
+  ol#steps li .n { font-variant-numeric:tabular-nums; opacity:.7; min-width:1.4em; }
+  ol#steps li.on .n { color:var(--hi); opacity:1; font-weight:600; }
+  #stepTitle { font-size:14px; font-weight:600; margin:2px 0 6px; }
+  #stepDetail { font-size:12.5px; color:#c3ccd8; }
+  #stepCaution { margin-top:10px; padding:8px 10px; font-size:12px;
+                 border-left:2px solid var(--warn); background:rgba(224,122,95,.09);
+                 color:#f0c3b4; border-radius:0 4px 4px 0; }
+  #stepCaution b { color:var(--warn); }
+  #err { position:fixed; inset:0; display:none; place-content:center; text-align:center;
+         padding:40px; background:var(--bg); }
+</style>
+</head>
+<body>
+<div id="view"></div>
+
+<div id="panel">
+  <h1>6" Mirror Cell</h1>
+  <div class="sub">6.000&Prime; &times; 1.000&Prime; mirror &middot; 44&Prime; f/7.33</div>
+
+  <div class="tabs">
+    <button id="tabBuild" aria-pressed="true">Build it</button>
+    <button id="tabExplore" aria-pressed="false">Explore</button>
+  </div>
+
+  <section id="modeBuild">
+    <h2>Step <span id="stepNum"></span> of <span id="stepTot"></span></h2>
+    <div id="stepTitle"></div>
+    <div id="stepDetail"></div>
+    <div id="stepCaution" hidden></div>
+    <div class="btns">
+      <button id="prev">&larr; Back</button>
+      <button id="play">Play</button>
+      <button id="next">Next &rarr;</button>
+    </div>
+    <h2>Sequence</h2>
+    <ol id="steps"></ol>
+  </section>
+
+  <section id="modeExplore" hidden>
+    <h2>Explode</h2>
+    <input type="range" id="explode" min="0" max="1" step="0.005" value="0">
+    <div class="btns">
+      <button data-t="0">Assembled</button>
+      <button data-t="0.45">Half</button>
+      <button data-t="1">Exploded</button>
+    </div>
+    <h2>Show</h2>
+    <div id="toggles"></div>
+  </section>
+
+  <h2>Axial stack (mm)</h2>
+  <table id="stack"></table>
+
+  <div class="note">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan
+    &middot; &larr;/&rarr; to step. Everything here is read from
+    <code>build/assembly.json</code>, written by <code>mirror_cell.py</code> &mdash; the
+    instructions and the geometry come from the same source.</div>
+</div>
+
+<div id="err"><div>
+  <h1>Could not load the model.</h1>
+  <p style="color:var(--dim);max-width:34em">This page fetches STLs, so it must be served
+  over HTTP &mdash; <code>file://</code> will not work &mdash; and <code>build/</code>
+  must exist.</p>
+  <p><code>cd ~/mirror-cell &amp;&amp; python3 mirror_cell.py &amp;&amp; python3 -m http.server 8018</code></p>
+</div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./js/vendor/three.module.js",
+  "three/addons/": "./js/vendor/addons/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const DEG = Math.PI / 180;
+const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+
+/* ---- binary STL -> BufferGeometry (build123d writes binary; no loader needed) ---- */
+function parseSTL(buf) {
+  const dv = new DataView(buf), n = dv.getUint32(80, true);
+  const pos = new Float32Array(n * 9), nor = new Float32Array(n * 9);
+  let o = 84;
+  for (let i = 0; i < n; i++) {
+    const nx = dv.getFloat32(o, true), ny = dv.getFloat32(o + 4, true), nz = dv.getFloat32(o + 8, true);
+    o += 12;
+    for (let v = 0; v < 3; v++) {
+      const k = i * 9 + v * 3;
+      pos[k] = dv.getFloat32(o, true);
+      pos[k + 1] = dv.getFloat32(o + 4, true);
+      pos[k + 2] = dv.getFloat32(o + 8, true);
+      nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
+      o += 12;
+    }
+    o += 2;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return g;
+}
+
+/* ---- scene ---- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14171c);
+const camera = new THREE.PerspectiveCamera(42, 1, 1, 4000);
+camera.up.set(0, 0, 1);                       // model Z is the optical axis
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.getElementById('view').appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0x9fb4d0, 0x20242c, 1.5));
+const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(160, -220, 320); scene.add(key);
+const fill = new THREE.DirectionalLight(0x88a0c8, 0.75); fill.position.set(-260, 140, -120); scene.add(fill);
+
+/* ---- materials: metalness stays low, there is no env map to reflect ---- */
+const absMat = c => new THREE.MeshStandardMaterial({ color: c, roughness: .72, metalness: .06 });
+const steel = new THREE.MeshStandardMaterial({ color: 0xc3ccd8, roughness: .32, metalness: .45 });
+const glass = new THREE.MeshStandardMaterial({
+  color: 0x9fc4e8, roughness: .12, metalness: .30,
+  transparent: true, opacity: .40, depthWrite: false, side: THREE.DoubleSide });
+
+/* ---- items: every drawable is keyed, so a sequence step can name it ---- */
+const items = {};
+function item(key, label, color, explode) {
+  return items[key] || (items[key] = {
+    label, color, objs: [], explode: V(explode), cur: new THREE.Vector3() });
+}
+function place(key, obj, pos) {
+  obj.position.set(pos[0], pos[1], pos[2]);
+  items[key].objs.push({ obj, home: new THREE.Vector3(pos[0], pos[1], pos[2]) });
+  scene.add(obj);
+}
+function setOffset(key, v) {
+  const it = items[key];
+  it.cur.copy(v);
+  for (const o of it.objs) o.obj.position.copy(o.home).add(v);
+}
+function setVisible(key, on) { for (const o of items[key].objs) o.obj.visible = on; }
+function isVisible(key) { return items[key].objs[0].obj.visible; }
+
+/* ---- procedural hardware. NB: build about the origin only -- place() sets position ---- */
+function spring(coilD, wireD, z0, z1) {
+  const turns = 5, seg = 160, pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg, a = t * turns * 2 * Math.PI;
+    pts.push(new THREE.Vector3(Math.cos(a) * coilD / 2, Math.sin(a) * coilD / 2,
+                               (t - 0.5) * (z1 - z0)));
+  }
+  return new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, wireD / 2, 7, false), steel);
+}
+// zHead is the head's BEARING FACE; the head sits on the far side of it from the tip, so
+// push (head rearward, in the knob) and pull (head forward, in the plate) come out opposite.
+function bolt(d, zHead, zTip, headT, headAF) {
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(d / 2, d / 2, Math.abs(zTip - zHead), 20), steel);
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.z = (zHead + zTip) / 2;
+  g.add(shaft);
+  const dir = Math.sign(zHead - zTip);
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(
+    headAF / Math.sqrt(3), headAF / Math.sqrt(3), headT, 6), steel);
+  head.rotation.x = Math.PI / 2;
+  head.position.z = zHead + dir * headT / 2;
+  g.add(head);
+  return g;
+}
+
+/* ---- state ---- */
+let SEQ = [], step = 0, mode = 'build', playing = null, anim = null;
+
+const LABEL = {
+  tube_plate: 'Tube plate', mirror_plate: 'Mirror plate', knob: 'Knobs', clip: 'Clips',
+  pocket_cap: 'Pocket caps', shim: 'Shims', wingnut: 'Wing nuts',
+  hex_nut: 'Captured nuts', washer: 'Landing pads', mirror: 'Mirror',
+  springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts' };
+
+async function build() {
+  const A = await (await fetch('build/assembly.json')).json();
+  SEQ = A.sequence;
+
+  await Promise.all(A.parts.map(async p => {
+    const geo = parseSTL(await (await fetch('build/' + p.stl)).arrayBuffer());
+    const mat = p.group === 'hardware' ? steel : absMat(p.color);
+    item(p.name, LABEL[p.name] || p.name, p.color, p.explode);
+    for (const inst of p.instances) {
+      const m = new THREE.Mesh(geo, mat);
+      if (inst.rot) m.rotation.z = inst.rot * DEG;
+      place(p.name, m, inst.pos);
+    }
+  }));
+
+  item('mirror', LABEL.mirror, '#9fc4e8', A.mirror.explode);
+  const mg = new THREE.Mesh(
+    new THREE.CylinderGeometry(A.mirror.d / 2, A.mirror.d / 2, A.mirror.t, 96), glass);
+  mg.rotation.x = Math.PI / 2;
+  place('mirror', mg, [0, 0, A.mirror.z + A.mirror.t / 2]);
+
+  const S = A.springs;
+  item('springs', LABEL.springs, '#c3ccd8', S.instances[0].explode);
+  for (const inst of S.instances)
+    place('springs', spring(S.coil_d, S.wire_d, S.z0, S.z1), inst.pos);
+
+  for (const b of A.bolts) {
+    item(b.name, LABEL[b.name], '#c3ccd8', b.explode);
+    for (const a of b.angles) {
+      place(b.name, bolt(b.d, b.z_head, b.z_tip, b.head_t, b.head_af),
+            [Math.cos(a * DEG) * b.r, Math.sin(a * DEG) * b.r, 0]);
+    }
+  }
+
+  for (const k in items) {
+    const b = new THREE.Box3();
+    for (const o of items[k].objs) b.expandByObject(o.obj);
+    items[k].box = b;                       // measured at offset 0
+  }
+
+  buildUI(A);
+  gotoStep(step, true);
+  fitMode();
+}
+
+/* ---- stepping ---- */
+function gotoStep(i, instant) {
+  step = Math.max(0, Math.min(SEQ.length - 1, i));
+  const target = SEQ[step].pose;
+  const from = {}, to = {}, hideAfter = new Set();
+
+  for (const k of Object.keys(items)) {
+    const was = isVisible(k), now = k in target;
+    if (!was && !now) continue;
+    const fly = items[k].explode.clone().multiplyScalar(0.7);
+    // arriving parts fly in along their explode direction; departing parts fly back out
+    to[k] = now ? V(target[k]) : items[k].cur.clone().add(fly);
+    from[k] = was ? items[k].cur.clone() : to[k].clone().add(fly);
+    if (!now) hideAfter.add(k);
+    setVisible(k, true);
+    setOffset(k, from[k]);
+  }
+
+  if (instant) {
+    for (const k in to) { setOffset(k, to[k]); if (hideAfter.has(k)) setVisible(k, false); }
+    anim = null;
+  } else {
+    anim = { t0: performance.now(), dur: 750, from, to, hideAfter };
+  }
+  renderStep();
+}
+
+function tickAnim(now) {
+  if (!anim) return;
+  let t = (now - anim.t0) / anim.dur;
+  if (t >= 1) t = 1;
+  const e = t * t * (3 - 2 * t);                    // smoothstep
+  for (const k in anim.to) setOffset(k, anim.from[k].clone().lerp(anim.to[k], e));
+  if (t === 1) {
+    for (const k of anim.hideAfter) setVisible(k, false);
+    anim = null;
+  }
+}
+
+function renderStep() {
+  const s = SEQ[step];
+  stepNum.textContent = step + 1;
+  stepTitle.textContent = s.title;
+  stepDetail.textContent = s.detail;
+  stepCaution.hidden = !s.caution;
+  if (s.caution) stepCaution.innerHTML = '<b>Careful:</b> ' + s.caution;
+  prev.disabled = step === 0;
+  next.disabled = step === SEQ.length - 1;
+  for (const li of document.querySelectorAll('#steps li')) {
+    const n = +li.dataset.i;
+    li.classList.toggle('on', n === step);
+    li.classList.toggle('done', n < step);
+  }
+  location.hash = 'step=' + (step + 1);
+}
+
+/* ---- explore mode ---- */
+function setExplode(t) {
+  for (const k in items) {
+    setVisible(k, document.querySelector(`#toggles input[data-k="${k}"]`).checked);
+    setOffset(k, items[k].explode.clone().multiplyScalar(t));
+  }
+}
+
+function setMode(m) {
+  mode = m;
+  tabBuild.setAttribute('aria-pressed', m === 'build');
+  tabExplore.setAttribute('aria-pressed', m === 'explore');
+  modeBuild.hidden = m !== 'build';
+  modeExplore.hidden = m !== 'explore';
+  stopPlay();
+  anim = null;
+  if (m === 'build') gotoStep(step, true);
+  else {
+    for (const cb of document.querySelectorAll('#toggles input')) cb.checked = true;
+    setExplode(+explode.value);
+  }
+  fitMode();
+}
+
+function stopPlay() {
+  if (playing) { clearInterval(playing); playing = null; play.textContent = 'Play'; }
+}
+
+function buildUI(A) {
+  stepTot.textContent = SEQ.length;
+  SEQ.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.dataset.i = i;
+    li.innerHTML = `<span class="n">${i + 1}</span><span>${s.title}</span>`;
+    li.onclick = () => { stopPlay(); gotoStep(i); };
+    steps.appendChild(li);
+  });
+  for (const [k, it] of Object.entries(items)) {
+    const lab = document.createElement('label');
+    lab.innerHTML = `<input type="checkbox" data-k="${k}" checked>
+      <span class="sw" style="background:${it.color}"></span>${it.label}`;
+    lab.querySelector('input').onchange = () => setExplode(+explode.value);
+    toggles.appendChild(lab);
+  }
+  for (const [k, v] of Object.entries(A.stack))
+    stack.insertAdjacentHTML('beforeend',
+      `<tr><td>${k.replace(/_/g, ' ')}</td><td class="v">${v.toFixed(2)}</td></tr>`);
+
+  const m = /step=(\d+)/.exec(location.hash);
+  if (m) step = Math.max(0, Math.min(SEQ.length - 1, +m[1] - 1));
+}
+
+prev.onclick = () => { stopPlay(); gotoStep(step - 1); };
+next.onclick = () => { stopPlay(); gotoStep(step + 1); };
+play.onclick = () => {
+  if (playing) return stopPlay();
+  play.textContent = 'Pause';
+  if (step === SEQ.length - 1) gotoStep(0, true);
+  playing = setInterval(() => {
+    if (step >= SEQ.length - 1) stopPlay(); else gotoStep(step + 1);
+  }, 2100);
+};
+tabBuild.onclick = () => setMode('build');
+tabExplore.onclick = () => setMode('explore');
+explode.oninput = () => setExplode(+explode.value);
+for (const b of document.querySelectorAll('button[data-t]'))
+  b.onclick = () => { explode.value = b.dataset.t; setExplode(+b.dataset.t); };
+addEventListener('keydown', e => {
+  if (mode !== 'build') return;
+  if (e.key === 'ArrowRight') { stopPlay(); gotoStep(step + 1); }
+  if (e.key === 'ArrowLeft') { stopPlay(); gotoStep(step - 1); }
+});
+
+/* ---- framing: fit the model and slide it clear of the panel ---- */
+const PANEL_W = 310;
+let fitR = 140, fitC = new THREE.Vector3(0, 0, 30);
+
+// Framing has to cover where parts actually GO, not just where they rest. In build mode
+// the mirror-plate sub-assembly is held 95 mm clear; in explore mode parts fly much
+// further. Fitting to the home positions alone crops both.
+function fitMode() {
+  const box = new THREE.Box3();
+  const add = (k, off) => box.union(items[k].box.clone().translate(off));
+  if (mode === 'build') {
+    for (const st of SEQ) for (const k in st.pose) add(k, V(st.pose[k]));
+  } else {
+    for (const k in items) add(k, items[k].explode.clone());
+  }
+  if (box.isEmpty()) return;
+  fitC = box.getCenter(new THREE.Vector3());
+  fitR = box.getBoundingSphere(new THREE.Sphere()).radius;
+  frame();
+}
+function frame() {
+  const dist = fitR / Math.sin(camera.fov * DEG / 2) * 1.25;
+  const dir = new THREE.Vector3(0.72, -0.62, 0.50).normalize();
+  const worldPerPx = 2 * dist * Math.tan(camera.fov * DEG / 2) / innerHeight;
+  const right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+  controls.target.copy(fitC).add(right.multiplyScalar(-PANEL_W / 2 * worldPerPx));
+  camera.position.copy(controls.target).addScaledVector(dir, dist);
+  controls.update();
+}
+function resize() {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', resize); resize();
+
+(function loop(now) {
+  requestAnimationFrame(loop);
+  tickAnim(now || performance.now());
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+build().catch(e => { console.error(e); document.getElementById('err').style.display = 'grid'; });
+</script>
+</body>
+</html>
