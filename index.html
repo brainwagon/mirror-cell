@@ -194,12 +194,20 @@ const steel = new THREE.MeshStandardMaterial({ color: 0xc3ccd8, roughness: .32, 
 const glass = new THREE.MeshStandardMaterial({
   color: 0x9fc4e8, roughness: .12, metalness: .30,
   transparent: true, opacity: .40, depthWrite: false, side: THREE.DoubleSide });
+// The tube is context, not subject: transparent enough to see the whole cell through,
+// and depthWrite off so it never occludes what it is wrapped around.
+const tubeMat = new THREE.MeshStandardMaterial({
+  color: 0xb9a389, roughness: .95, metalness: 0,
+  transparent: true, opacity: .13, depthWrite: false, side: THREE.DoubleSide });
 
 /* ---- items: every drawable is keyed, so a sequence step can name it ---- */
 const items = {};
-function item(key, label, color, explode) {
+function item(key, label, color, explode, context) {
   return items[key] || (items[key] = {
-    label, color, objs: [], explode: V(explode), cur: new THREE.Vector3() });
+    label, color, objs: [], explode: V(explode), cur: new THREE.Vector3(),
+    // context items are drawn but excluded from framing: the tube stub is 202 mm long
+    // and would shrink the cell to a speck in every step of the build.
+    context: !!context });
 }
 function place(key, obj, pos) {
   obj.position.set(pos[0], pos[1], pos[2]);
@@ -251,7 +259,8 @@ const LABEL = {
   push_knob: 'Push knobs', pull_knob: 'Pull knobs',
   pocket_cap: 'Pocket caps', shim: 'Shims',
   hex_nut: 'Hex nuts', washer: 'Landing pads', mirror: 'Mirror',
-  springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts' };
+  springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts',
+  fan: 'Fan (40 mm, stand-in)', tube: 'Tube (7.75″ OD stub)' };
 
 async function build() {
   const A = await (await fetch('build/assembly.json')).json();
@@ -268,13 +277,28 @@ async function build() {
   await Promise.all(A.parts.map(async p => {
     const geo = parseSTL(await (await fetch('build/' + p.stl)).arrayBuffer());
     const mat = p.group === 'hardware' ? steel : absMat(p.color);
-    item(p.name, LABEL[p.name] || p.name, p.color, p.explode);
+    item(p.name, LABEL[p.name] || p.name, p.color, p.explode, p.context);
     for (const inst of p.instances) {
       const m = new THREE.Mesh(geo, mat);
       if (inst.rot) m.rotation.z = inst.rot * DEG;
       place(p.name, m, inst.pos);
     }
   }));
+
+  // Tube stub: a plain annulus, so it is generated here from assembly.json rather than
+  // fetched as an STL. Two open-ended cylinders plus a ring at each end to cap the wall.
+  const T = A.tube, len = T.z1 - T.z0;
+  item('tube', LABEL.tube, '#b9a389', T.explode, true);
+  const tg = new THREE.Group();
+  for (const d of [T.od, T.id])
+    tg.add(new THREE.Mesh(new THREE.CylinderGeometry(d / 2, d / 2, len, 128, 1, true),
+                          tubeMat));
+  for (const s of [-1, 1]) {
+    const r = new THREE.Mesh(new THREE.RingGeometry(T.id / 2, T.od / 2, 128), tubeMat);
+    r.rotation.x = Math.PI / 2; r.position.y = s * len / 2; tg.add(r);
+  }
+  tg.rotation.x = Math.PI / 2;                       // model Z is up; cylinders are Y-up
+  place('tube', tg, [0, 0, (T.z0 + T.z1) / 2]);
 
   item('mirror', LABEL.mirror, '#9fc4e8', A.mirror.explode);
   const mg = new THREE.Mesh(
@@ -478,7 +502,7 @@ let fitR = 140, fitC = new THREE.Vector3(0, 0, 30);
 // further. Fitting to the home positions alone crops both.
 function fitMode() {
   const box = new THREE.Box3();
-  const add = (k, off) => box.union(items[k].box.clone().translate(off));
+  const add = (k, off) => { if (!items[k].context) box.union(items[k].box.clone().translate(off)); };
   if (mode === 'build') {
     for (const st of SEQ) for (const k in st.pose) add(k, V(st.pose[k]));
   } else {

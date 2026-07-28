@@ -113,6 +113,13 @@ and the landing-pad recess ceilings are bridged.
 - **The pull knob's nut pocket is SHALLOWER than the nut** (`NUT_T - PULL_NUT_PROUD`), so
   the nut stands 0.4 mm proud. That is not a mistake to "correct" to a flush fit: it is
   what keeps steel, not ABS, bearing on the tube plate under sustained tension.
+- **The fan is a stand-in, and the tube is scenery.** Neither is part of the cell. The fan
+  in `fan()` was drawn here, not downloaded — GrabCAD and the like need an account, and
+  putting a made-up shape behind a real part number would be worse than saying this. Trust
+  its 40 × 40 × 10 envelope on a 32 mm pattern, which is standard, and nothing finer. Both
+  are flagged `context` in `assembly.json` so they are drawn but **excluded from the
+  camera framing** — include the 202 mm tube in the fit and the cell becomes a speck in
+  every step.
 - **Knob flute depth is set directly, not by the cutter radius.** The cutters sit outside
   the rim. Centred on the rim, as they were at Ø30, a Ø5 cutter would cut 2.5 mm and leave
   0.9 mm of wall. The 30° phase is cosmetic at 12 flutes — depth is what protects the wall.
@@ -132,8 +139,9 @@ and the landing-pad recess ceilings are bridged.
 - **The press fit in a 2.2 mm knob wall** — see above. Blocks the knobs only.
 - **Knob and plate outlines are functional but aesthetically provisional.** Never styled.
   The knobs are now the *only* thing you touch, so they are the ones worth styling.
-- **Fan** — mounting holes exist on the tube plate, unpopulated. No fan specified or bought.
-  There is room: the knobs sit at r ≥ 30 and a 40 mm fan lives inside r = 25.
+- **Fan** — mounting holes exist on the tube plate; **no fan is bought**. The viewer shows
+  a 40 mm one so the assembled cell can be seen whole, and it fits (corners clear the push
+  knobs by 3.06 mm), but that solid is a stand-in drawn in `fan()` — see the traps.
 - **Bolt heads and springs are procedural stand-ins in the viewer.** Their hex phase is not
   matched to anything, so a mis-keyed bolt head would still look fine. The hex nut and
   washer are real solids and *are* checked. Consider importing a vendor solid for the bolts.

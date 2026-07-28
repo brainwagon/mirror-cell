@@ -343,7 +343,15 @@ over the 0.125" first proposed.
 - **Untested: the hex press fit in a 2.2 mm knob wall.** `FIT_PRESS` was measured in a
   6 mm coupon plate with material all around it. Print one Pull knob and press a nut into
   it before committing to six.
-- No fan is specified or bought; only the mounting holes exist.
+- **No fan is bought.** The mounting holes are real, and the viewer now shows a 40 × 40 ×
+  10 mm fan on the 32 mm pattern — but that solid is a **stand-in drawn here**, not a
+  vendor model, and it is the only item in the repo that is neither measured nor derived
+  from the design's own dimensions. What the checks use is the envelope, which every 40 mm
+  fan shares: the corners clear the Push knobs by 3.06 mm and the throat passes the 1.500"
+  centre bore. Swap in a real solid before trusting anything finer than that.
+- **The tube stub is display only.** 7.500" ID × 0.125" wall, from 3.65" rearward of the
+  Tube plate's mid-plane to 2" above the mirror's face. The tube belongs to the telescope,
+  not to this design, but every clearance argument here is made against it.
 
 ## 11. Load-bearing decisions, and what would overturn them
 

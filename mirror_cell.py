@@ -67,9 +67,29 @@ MP_LIGHTEN_WALL = 6.0
 MP_LIGHTEN_R = (MP_FLAT_D - 2 * MP_LIGHTEN_WALL - MP_CENTER_BORE / 2) / 2
 MP_LIGHTEN_RC = MP_CENTER_BORE / 2 + MP_LIGHTEN_WALL + MP_LIGHTEN_R
 
-# --- fan option (unpopulated, spec §5) ---------------------------------------
+# --- fan option (spec §5) ----------------------------------------------------
+# The holes are real and cut in the plate; the fan itself is a 40 mm stand-in modelled
+# here, NOT a vendor solid. Its envelope is what the checks care about -- 40 x 40 x 10 is
+# the standard, and the corner-to-knob clearance is the only tight number.
 FAN_PITCH = 32.0
 FAN_HOLE_D = 3.2
+FAN_SIZE = 40.0
+FAN_T = 10.0
+FAN_CORNER_R = 3.0
+FAN_THROAT_D = 38.0
+FAN_CLEAR_HOLE_D = 4.3   # the fan's own holes are clearance; the plate's are tapped
+FAN_HUB_D = 16.0
+FAN_BLADES = 7
+FAN_BLADE_PITCH = 35.0   # degrees of twist, for looks
+
+# --- the tube (display only) -------------------------------------------------
+# A stub of the sonotube, drawn so the assembled cell can be seen in context. It is not
+# a part of this design -- the tube is the telescope's -- but the cell's whole clearance
+# story is against it, so it is worth being able to see.
+TUBE_WALL = inch(0.125)
+TUBE_OD = TUBE_ID + 2 * TUBE_WALL          # 7.750", matching the real sonotube
+TUBE_REAR_OF_PLATE = inch(3.65)            # from the tube plate's MID-PLANE, rearward
+TUBE_FWD_OF_MIRROR = inch(2.0)             # above the mirror's front surface
 
 # --- 10-24 hardware ----------------------------------------------------------
 BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24
@@ -388,6 +408,41 @@ def shim():
     return extrude(Rectangle(SHIM_L, SHIM_W), RTV_T)
 
 
+def fan():
+    """A 40 mm fan, modelled here rather than downloaded.
+
+    THIS IS A STAND-IN, not a vendor solid, and it is the only item in the model that is
+    not either measured or drawn from the design's own dimensions. GrabCAD and the like
+    need an account, and inventing a part number for a shape I drew myself would be
+    worse than saying so. What the checks actually use is the envelope -- 40 x 40 x 10
+    on a 32 mm hole pattern, which every 40 mm fan shares -- so a real one will drop into
+    the same space. The blades exist to make it read as a fan on screen.
+
+    Front face at z=0, body growing +z; it mounts to the tube plate's REAR face, so the
+    assembly places it at z=-FAN_T.
+    """
+    body = extrude(RectangleRounded(FAN_SIZE, FAN_SIZE, FAN_CORNER_R)
+                   - Circle(FAN_THROAT_D / 2), FAN_T)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            body -= Pos(sx * FAN_PITCH / 2, sy * FAN_PITCH / 2) * extrude(
+                Circle(FAN_CLEAR_HOLE_D / 2), FAN_T)
+
+    hub = Pos(0, 0, 1.0) * extrude(Circle(FAN_HUB_D / 2), FAN_T - 2.0)
+    r_in, r_out = FAN_HUB_D / 2 - 0.5, FAN_THROAT_D / 2 - 0.6
+    for i in range(FAN_BLADES):
+        blade = Rot(0, 0, 360.0 * i / FAN_BLADES) * Pos((r_in + r_out) / 2, 0, FAN_T / 2) \
+            * Rot(FAN_BLADE_PITCH, 0, 0) * Box(r_out - r_in, 9.0, 1.2)
+        hub += blade
+    return body + hub
+
+
+def tube():
+    """A stub of the sonotube. Display only -- see TUBE_* for why it is here at all."""
+    return Pos(0, 0, TUBE_Z0) * extrude(
+        Circle(TUBE_OD / 2) - Circle(TUBE_ID / 2), TUBE_Z1 - TUBE_Z0)
+
+
 # ---------------------------------------------------------------- MAIN
 
 # Printed parts. Bed-fit checks apply to these.
@@ -402,7 +457,8 @@ PARTS = {
 }
 
 # Purchased hardware. Exported so the viewer can show the real thing, but not printed.
-HARDWARE = {"hex_nut": hex_nut, "washer": washer}
+# The fan is a STAND-IN rather than a real thing -- see fan().
+HARDWARE = {"hex_nut": hex_nut, "washer": washer, "fan": fan}
 
 BED = (250.0, 250.0, 260.0)  # Anycubic Kobra S1
 
@@ -417,6 +473,11 @@ Z_CAP = Z_MP + MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T
 # Bearing face of the captured pull-bolt head: the hex pocket FLOOR. Bolt length is
 # measured from under the head (the standard datum), so the tip is this minus the length.
 Z_PULL_HEAD_FACE = Z_CAP - (HEAD_T + 0.4)
+
+# Tube stub ends. Rear is measured from the tube plate's MID-PLANE (the plate is what
+# locates the cell in the tube); front from the mirror's front SURFACE, not its back.
+TUBE_Z0 = TUBE_PLATE_T / 2 - TUBE_REAR_OF_PLATE
+TUBE_Z1 = Z_MIRROR + MIRROR_T + TUBE_FWD_OF_MIRROR
 
 
 def _ring(r, z, angles=STATIONS, orient=True):
@@ -523,7 +584,8 @@ def sequence():
          "pull knobs, and snug the push knobs to lock.",
          "Without the fender washers a transport knock ovals the holes in the cardboard, "
          "and collimation is gone every time you move the scope.",
-         pose(home=tp + ["hex_nut", "springs", "pull_knob", "push_bolts", "push_knob"]
+         pose(home=tp + ["hex_nut", "springs", "pull_knob", "push_bolts", "push_knob",
+                         "tube", "fan"]
               + [k for k in MP_KIDS if k != "shim"])),
     ]
     return [{"title": t, "detail": d, "caution": c, "pose": p} for t, d, c, p in steps]
@@ -567,6 +629,10 @@ def assembly():
          "instances": _ring(R_PUSH, Z_MP)},
         {"name": "pocket_cap", "stl": "pocket_cap.stl", "color": "#8a6a3a",
          "explode": [0, 0, 110], "instances": _ring(R_PULL, Z_CAP)},
+        # Display only, and both flagged "context": they are drawn but must not drive the
+        # camera framing, or a 202 mm tube shrinks the cell to nothing in every step.
+        {"name": "fan", "stl": "fan.stl", "color": "#23262c", "context": True,
+         "explode": [0, 0, -230], "instances": [{"pos": [0, 0, -FAN_T], "rot": 0}]},
         {"name": "shim", "stl": "shim.stl", "color": "#b0552f", "group": "shim",
          "explode": [0, 0, 150],
          "instances": [{"pos": [66 * cos(radians(a)), 66 * sin(radians(a)),
@@ -584,6 +650,9 @@ def assembly():
         "downloads": downloads(parts),
         # generated procedurally in the viewer from these numbers
         "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
+        # the tube is a plain annulus, so the viewer draws it rather than loading an STL
+        "tube": {"id": TUBE_ID, "od": TUBE_OD, "z0": TUBE_Z0, "z1": TUBE_Z1,
+                 "explode": [0, 0, -330]},
         # springs explode radially: axially they would stay buried between the plates.
         # z0 is the BOTTOM OF THE SEAT, not the plate face -- the seat is part of the
         # spring's span, which is the whole reason it costs preload.
@@ -818,7 +887,7 @@ def verify():
 
     # --- the sequence may only name things that exist, and must end complete ---
     A = assembly()
-    drawable = {p["name"] for p in A["parts"]} | {"mirror", "springs"} \
+    drawable = {p["name"] for p in A["parts"]} | {"mirror", "springs", "tube"} \
         | {b["name"] for b in A["bolts"]}
     named = {k for st in A["sequence"] for k in st["pose"]}
     chk(named <= drawable, f"sequence names only real items; stray: {named - drawable}")
@@ -872,6 +941,48 @@ def verify():
             chk(clash < 1.0,
                 f"{nm} at r={hypot(*inst['pos'][:2]):.0f} seats in its "
                 f"{'/'.join(hosts)} recess (overlap {clash:.2f} mm^3)")
+
+    # --- the tube stub, and the fan in the space the knobs left ---------------
+    chk(abs(TUBE_OD - TUBE_ID - 2 * TUBE_WALL) < 1e-9 and abs(TUBE_WALL - inch(0.125)) < 1e-9,
+        f"tube {TUBE_ID/25.4:.3f}\" ID, {TUBE_WALL/25.4:.3f}\" wall, "
+        f"{TUBE_OD/25.4:.3f}\" OD")
+    chk(abs((TUBE_PLATE_T / 2 - TUBE_Z0) - inch(3.65)) < 1e-9,
+        f"tube reaches {(TUBE_PLATE_T/2-TUBE_Z0)/25.4:.2f}\" rearward of the plate's "
+        f"mid-plane")
+    chk(abs((TUBE_Z1 - (Z_MIRROR + MIRROR_T)) - inch(2.0)) < 1e-9,
+        f"tube reaches {(TUBE_Z1-(Z_MIRROR+MIRROR_T))/25.4:.2f}\" above the mirror's face")
+    # Everything the cell owns has to be inside the stub, or the stub is the wrong length.
+    hw_rear = -(standoff + KNOB_T)
+    chk(TUBE_Z0 < hw_rear - 5.0,
+        f"tube encloses the rear hardware: ends at {TUBE_Z0:.1f}, hardware stops at "
+        f"{hw_rear:.1f} mm")
+    chk(TUBE_Z1 > Z_MP + MIRROR_PLATE_T + POST_H + CLIP_T + 5.0,
+        f"tube encloses the clip tops ({Z_MP+MIRROR_PLATE_T+POST_H+CLIP_T:.1f} mm)")
+    reach = max(MP_ARC_R, R_PULL + PULL_KNOB_D / 2, TP_ARC_R)
+    chk(reach < TUBE_ID / 2 + 1e-9,
+        f"widest thing in the cell reaches r={reach:.2f}, tube bore r={TUBE_ID/2:.2f} mm")
+
+    # The fan lives in the hole the knobs are NOT in. Corner-to-knob is the tight one.
+    fan_corner = sqrt(2) * (FAN_SIZE / 2 - FAN_CORNER_R) + FAN_CORNER_R
+    chk(fan_corner < R_PUSH - PUSH_KNOB_D / 2,
+        f"fan corner r={fan_corner:.2f} clears the push knobs at r={R_PUSH-PUSH_KNOB_D/2:.2f}"
+        f" by {R_PUSH - PUSH_KNOB_D/2 - fan_corner:.2f} mm")
+    chk(FAN_THROAT_D <= CENTER_BORE + 1e-9,
+        f"fan throat {FAN_THROAT_D:.1f} passes the {CENTER_BORE:.1f} mm centre bore")
+    chk(FAN_CLEAR_HOLE_D > FAN_HOLE_D,
+        f"fan's own holes ({FAN_CLEAR_HOLE_D}) are clearance over the plate's "
+        f"tapped {FAN_HOLE_D} mm")
+    # Solid against solid: bolted to the rear face, the fan must touch the plate and no
+    # more. A fan sunk into the plate, or hovering, both show up here.
+    fan_inst = [p for p in A["parts"] if p["name"] == "fan"][0]["instances"][0]
+    placed_fan = Pos(*fan_inst["pos"]) * fan()
+    try:
+        clash = (placed_fan & solid("tube_plate")).volume
+    except Exception:
+        clash = 0.0
+    chk(clash < 1.0, f"fan sits on the tube plate's rear face (overlap {clash:.2f} mm^3)")
+    chk(abs(placed_fan.bounding_box().max.Z) < 1e-9,
+        f"fan's mounting face is ON the rear face (z={placed_fan.bounding_box().max.Z:.2f})")
 
     # --- the mirror plate must clear the tube wall as it tilts ----------------
     # Tilting shrinks a feature's projected radius (r.cos) but swings tall features out

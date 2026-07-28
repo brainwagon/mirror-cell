@@ -50,6 +50,12 @@ Two modes:
   clickable step list. Linkable as `#step=7`.
 - **Explore** — the explode slider and per-part visibility toggles.
 
+The last step drops the cell into a **transparent stub of the sonotube** (7.750″ OD,
+0.125″ wall, reaching 3.65″ behind the tube plate and 2″ above the mirror) with a 40 mm
+fan on the rear face, so the finished assembly can be seen in context. Both are display
+only and can be switched off in Explore. **The fan is a stand-in drawn in `fan()`,
+not a vendor solid** — trust its envelope, not its details.
+
 Under both is a **Download STEP** list: every printed part and both test coupons, each
 with its STEP and (smaller) its STL. The list is generated —
 printed parts from `assembly.json`, coupons from `coupons.json` — so it cannot offer a
