@@ -156,6 +156,15 @@ and the landing-pad recess ceilings are bridged.
   rejects it; the #4 leaves 5.3 mm².
 - **Clips are separate parts.** Integral, they leave a 142.4 mm opening for a 152.4 mm
   mirror — the mirror could never be installed. Do not "simplify" them back onto the posts.
+- **The mirror plate is laterally unregistered on purpose, and the collimation range
+  depends on it.** Tilt needs the plate to slide ~0.26 mm sideways: a pull bolt swings
+  0.52 mm at the tube plate over the full 1.42°, against 0.15 mm of slop per side, so the
+  plate does not tilt about a fixed point. Adding any pilot, boss or centring feature
+  between the two plates — which reads as an obvious improvement — collapses the range,
+  and **no assertion would catch it**. Spec §7 and §11 carry the numbers.
+- **`TILT_MAX = 3.0` is not the mechanism's range.** It is a conservative envelope for the
+  tube-wall swing check. The real limit is ±1.42° as printed, set by `BOLT_CLEAR_D`. The
+  two are deliberately not wired together — see the comments on both.
 - **Captured nut pockets open FORWARD**, into the gap between the plates. A push bolt's
   reaction drives its nut rearward into solid plastic. Every steel-to-plastic interface in
   this design is in compression, because ABS creeps under sustained tension.

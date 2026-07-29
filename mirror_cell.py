@@ -103,6 +103,14 @@ TUBE_FWD_OF_MIRROR = inch(2.0)             # above the mirror's front surface
 
 # --- 10-24 hardware ----------------------------------------------------------
 BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24
+# This stock clearance -- 0.166 mm per side, chosen for nothing but free fit -- is also
+# what sets the COLLIMATION RANGE, and it is the tightest limit in the adjustment chain.
+# The pull bolt's head is clamped flat on the mirror plate's floor, so the whole mirror
+# tilt shows up as bolt tilt in the tube plate's hole, guided over TUBE_PLATE_T less the
+# spring seat. As printed that is +/-1.42 deg (85 arcmin), +/-2.12 mm at one station --
+# against 2.51 deg the spring would allow. Ample: one knob turn is 42 arcmin. Derivation,
+# the as-drawn figures, and the tripwires are in spec section 7; TILT_MAX in verify() is a
+# separate and deliberately conservative envelope, not this number.
 NUT_AF = inch(0.375)  # 10-24 hex nut across flats
 NUT_T = inch(0.130)
 HEAD_AF = inch(0.3125)  # 10-24 hex head across flats
@@ -1651,6 +1659,10 @@ def verify():
     # Tilting shrinks a feature's projected radius (r.cos) but swings tall features out
     # (h.sin), so the governing feature changes with angle. h is measured above the
     # pivot, taken as the mirror plate's rear face.
+    # An ENVELOPE, not the mechanism's range: the bolt clearance caps tilt at 1.42 deg as
+    # printed (see BOLT_CLEAR_D), so checking clearance at 3 deg is deliberately
+    # pessimistic. Not derived from the bolt holes on purpose -- if a future change opens
+    # up the tilt range, this check should not silently widen with it.
     TILT_MAX = 3.0     # degrees; real collimation is well under 1
     features = [("plate rim", MP_ARC_R, MIRROR_PLATE_T),
                 ("clip tops", POST_IR + POST_T, MIRROR_PLATE_T + POST_H + CLIP_T),

@@ -318,6 +318,42 @@ that's good for over 1000. The load case is **transport**: a 10 g knock puts ~70
 the hole edge, cardboard crushes, holes go oval, and collimation is gone every time you
 move the scope. A 1" fender washer spreads that ~15× and makes it a non-issue.
 
+**The collimation range is a side effect of the bolt clearance, not a designed number.**
+`BOLT_CLEAR_D` is 0.2031" — the stock free-fit clearance for a #10 screw, **0.333 mm
+diametral, 0.166 mm per side.** Nothing was added for angular play, and the range that
+falls out is what the cell has:
+
+| | as drawn | as printed (0.8% shrink) |
+|---|---|---|
+| Pull-bolt hole | 5.159 mm | 5.118 mm |
+| Tilt, **half-angle** | 1.62° | **1.42° = 85 arcmin** |
+| Full swing between extremes | 3.24° | 2.84° |
+| Travel at one Station | ±2.42 mm | **±2.12 mm** |
+| Mirror edge | ±2.16 mm | ±1.89 mm |
+
+The **Pull** bolt is the one that tilts in the Tube plate: its head is clamped flat against
+the Mirror plate's 3.45 mm floor by spring tension, so its axis stays normal to the mirror
+and the full mirror tilt appears at the Tube plate hole. The guiding length is **11.7 mm**
+— the ½" plate less the 1.0 mm spring seat, which is Ø9.8 and constrains nothing. A
+cylinder of diameter *d* tilted by θ through a hole of length *L* needs `d/cos θ + L·tan θ`.
+Numbers computed at nominal print shrink; drawn values in the left column.
+
+The cone is symmetric, and all three bolts share the Mirror plate's normal, so every Pull
+bolt tilts by the same angle whichever way the plate leans — the limit does not depend on
+tilt direction. Nominal assembly sits at the centre of the cone. This is ample: one full
+turn of a Pull knob is 42 arcmin, so two turns spans everything, and real collimation is
+arcminutes. **The hole binds before the spring does** — the spring allows 3.76 mm at a
+Station (2.51°) and the hole stops you at 2.12 mm. §11 records that as a decision.
+
+> **The lateral freedom of the Mirror plate is load-bearing, and it does not look it.**
+> Over 1.42° a Pull bolt anchored at the Mirror plate swings **0.52 mm** sideways at the
+> Tube plate, against 0.15 mm of slop per side. The plate therefore does **not** tilt about
+> a fixed point: it translates ~0.26 mm sideways so the three bolts can centre. That works
+> only because nothing laterally registers it — it floats on three springs, three Push tips
+> bearing on washers with 1.92 mm of radial room, and three Pull bolts. A 0.26 mm mirror
+> decentre is optically nothing at f/7.33. **Any future centring feature between the two
+> plates would collapse the tilt range, and no assertion would catch it.**
+
 ## 8. The three gaps that must never close
 
 | Gap | Value | Guards against |
@@ -418,3 +454,15 @@ over the 0.125" first proposed.
 - **Spring preload is computed from geometry, never typed in** (§7). It is the product of
   free length, rate, gap *and seat depth*, and it has already been broken once by a change
   to the seat that looked unrelated.
+- **The collimation range is inherited from a stock #10 free-fit clearance** (§7): ±1.42°
+  as printed, from 0.166 mm per side over an 11.7 mm guiding length. Nobody chose it, and
+  it is the *tightest* limit in the adjustment chain — the spring would allow 2.51°.
+  **Tripwires:** a thicker Tube plate, a deeper spring seat (which shortens the guide and
+  would *increase* range while costing preload), or any tightening of `BOLT_CLEAR_D` moves
+  it directly. It is not asserted anywhere; `TILT_MAX = 3.0` in `verify()` is only a
+  conservative envelope for the tube-wall swing check and is not derived from this.
+- **The Mirror plate is laterally unregistered, and the tilt range depends on it** (§7).
+  Tilting needs ~0.26 mm of sideways plate movement, because a Pull bolt swings 0.52 mm at
+  the Tube plate against 0.15 mm of slop per side. **Tripwire:** any pilot, boss, or
+  centring feature between the two plates — the sort of thing that reads as an improvement
+  — would collapse the tilt range, and nothing in the model would notice.
