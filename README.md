@@ -7,6 +7,7 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 | File | Purpose |
 |---|---|
 | `HANDOFF.md` | **Start here when resuming** — state, blockers, and the traps |
+| `BOM.md` | The buy list, annotated. Generated — `verify()` fails if it goes stale |
 | `CONTEXT.md` | Glossary. Tube plate, Mirror plate, Station, Support point, Silicone dab, … |
 | `mirror-cell-spec.md` | The design, its numbers, and the reasoning behind them |
 | `docs/adr/0001-…md` | Why the support points sit at 0.75R rather than the PLOP optimum |
@@ -23,8 +24,9 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 112 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
-and the bill of materials (`build/bom.md`, `build/bom.csv`).
+Runs 113 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
+and the bill of materials — `build/bom.md`, `build/bom.csv`, and the committed snapshot
+`BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries).
 The assertions encode the spec — the three gaps that must never close, both fastener
 bearing floors, assembly clearances, spring travel, post placement, and printer bed fit.
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were

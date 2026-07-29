@@ -233,7 +233,7 @@ bearing directly on ABS would emboss a dimple and walk the collimation.
 ## 7. Hardware
 
 This table is the *reasoning*; the shopping list is generated. `bom()` in `mirror_cell.py`
-writes `build/bom.md` and `build/bom.csv` from the model's own parameters and instance
+writes [BOM.md](./BOM.md) and `build/bom.csv` from the model's own parameters and instance
 counts, annotated line by line, and the viewer offers both for download. Assertions tie it
 to the geometry — it buys exactly the nuts, washers, springs and screws the model draws.
 

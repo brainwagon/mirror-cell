@@ -8,7 +8,7 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **112 assertions pass.** Nothing has been
+Design is complete and internally consistent. **113 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
@@ -27,10 +27,10 @@ python3 -m http.server 8018       # then open http://localhost:8018/
 | pocket_cap | 3 | 0.16 cc | bedded in RTV, loose fit |
 | shim | 3 | 0.57 cc | assembly aid, removed after cure |
 
-**The buy list is generated.** `build/bom.md` (and `.csv`, and a download button in the
-viewer) is written by `bom()` from the model's own numbers, with a line of reasoning on
-every row. Take that to the shop rather than the summary below, which is here only so
-this page reads as a whole: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
+**The buy list is generated.** [BOM.md](./BOM.md) — also `build/bom.csv`, and a download
+button in the viewer — is written by `bom()` from the model's own numbers, with a line of
+reasoning on every row. Take that to the shop rather than the summary below, which is here
+only so this page reads as a whole: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
 6 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
 ≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
 3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
