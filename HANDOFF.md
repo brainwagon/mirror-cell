@@ -27,7 +27,7 @@ the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over
 
 | Part | Qty | Volume | Notes |
 |---|---|---|---|
-| tube_plate | 1 | 204.7 cc | biggest print, ~3½ h |
+| tube_plate | 1 | 204.7 cc | biggest print, 5½–7 h (measured; see slicer settings) |
 | mirror_plate | 1 | 166.0 cc | posts + root chamfer integral |
 | clip | 3 | 1.8 cc | separate — see traps |
 | push_knob | 3 | 1.9 cc | captures a hex head |
@@ -64,7 +64,7 @@ reinforcement scheme is confirmed in practice and not only in the file.
 One thing deliberately left: **the coupon was not sectioned.** Breaking a bore open is the
 only way to confirm the 100 % region really materialised around it rather than leaving
 gyroid against the insert — which is what the minimum-wall assertion assumes. Cheap, and
-worth doing before the 3½ hour plate rather than after.
+worth doing before the plate rather than after — that print is 5½–7 h.
 
 **The mirror plate is not.** `FIT_SLIP` is predicted from the measured shrink, not
 measured: no 10-24 hex bolt was on hand. One bolt in row H of the coupon settles it, and
@@ -224,7 +224,7 @@ everything in the first group below resolves with the coupon in hand plus one bo
 - **`coupon_insert` has not been sectioned.** The bores themselves passed (2026-07-29, see
   above), but nothing has confirmed the `insert_solid` modifier produced solid material
   around the bore in the plastic rather than only in the file. Snap one bore open and look.
-  Worth doing *before* the tube plate goes on the bed — it is the 3½ hour print.
+  Worth doing *before* the tube plate goes on the bed — that print is 5½–7 h.
 
 **Closed or downgraded:**
 
