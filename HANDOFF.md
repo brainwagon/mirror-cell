@@ -120,6 +120,12 @@ and the landing-pad recess ceilings are bridged.
   are flagged `context` in `assembly.json` so they are drawn but **excluded from the
   camera framing** — include the 202 mm tube in the fit and the cell becomes a speck in
   every step.
+- **Only the PULL knob is bored through.** Its bore is real work — tightening drives the
+  bolt end into it. The push knob is blind: its shank leaves through the pocket opening
+  (the plate-facing face), so a bore there would only be a hole out the back. Pressing a
+  head into it is therefore one-way. Both pockets face FORWARD, and the push knob's cannot
+  be flipped: a rear-facing pocket needs the body to reach 14 mm forward of the head into
+  10.16 mm of standoff, so it would bury itself in the tube plate.
 - **Knob flute depth is set directly, not by the cutter radius.** The cutters sit outside
   the rim. Centred on the rim, as they were at Ø30, a Ø5 cutter would cut 2.5 mm and leave
   0.9 mm of wall. The 30° phase is cosmetic at 12 flutes — depth is what protects the wall.

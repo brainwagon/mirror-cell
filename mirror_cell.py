@@ -367,7 +367,11 @@ def push_knob():
     # takes the press value even though the pocket is head-sized.
     k -= Pos(0, 0, KNOB_T - (HEAD_T + 0.4)) * hex_prism(HEAD_AF, HEAD_T + 0.4,
                                                         fit=FIT_PRESS)
-    k -= extrude(Circle(BOLT_CLEAR_D / 2), KNOB_T)
+    # No bore behind the pocket. The shank leaves through the pocket's own opening, which
+    # is the knob's plate-facing face, so a clearance hole here would only be a hole out
+    # the back -- invisible at ø30, an eyesore at ø16. Blind means a head pressed in is
+    # in for good; that is the intent. (The PULL knob's identical-looking bore IS load-
+    # bearing work: tightening drives the bolt end into it.)
     return k
 
 
@@ -804,6 +808,17 @@ def verify():
     chk(3 * preload > 1.5 * moving,
         f"spring preload {preload/4.4482:.2f} lb/station, {3*preload/4.4482:.2f} lb total "
         f"vs {moving/4.4482:.2f} lb of moving assembly ({3*preload/moving:.2f}x)")
+
+    # The push knob is blind behind its pocket -- probe the axis where a bore would be.
+    depth = KNOB_T - (HEAD_T + 0.4)
+    probe = extrude(Circle(BOLT_CLEAR_D / 2), depth - 0.5)
+    try:
+        solid_behind = (probe & push_knob()).volume
+    except Exception:
+        solid_behind = 0.0
+    chk(abs(solid_behind - probe.volume) < 1.0,
+        f"push knob is solid behind its pocket for {depth:.1f} mm "
+        f"({solid_behind:.0f} of {probe.volume:.0f} mm^3 filled)")
 
     # The pull knob must never touch the plate: only the steel nut does.
     chk(PULL_NUT_PROUD > 0.2,

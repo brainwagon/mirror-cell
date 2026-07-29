@@ -195,7 +195,9 @@ toothpicks used previously — same thickness, now repeatable.
 ### Push knobs (×3) and Pull knobs (×3)
 Both rear controls are printed, each capturing its steel in a **hex pocket** — a form fit,
 not friction, so neither can slip. The Push knob (Ø16 × 14) takes a bolt head and carries
-torque only. The Pull knob (Ø18 × 14) takes a plain 10-24 hex nut and **replaces the wing
+torque only; it is **blind behind its pocket** — the shank leaves through the pocket's own
+opening, so a clearance bore would be nothing but a hole out the back, and a head pressed
+in is meant to stay. The Pull knob (Ø18 × 14) takes a plain 10-24 hex nut and **replaces the wing
 nut**; its nut stands **0.4 mm proud** of the printed face so steel bears on the tube plate
 and the ABS never does.
 
