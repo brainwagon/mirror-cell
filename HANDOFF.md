@@ -8,14 +8,22 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **113 assertions pass.** Nothing has been
+Design is complete and internally consistent. **121 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
 cd ~/mirror-cell
 python3 mirror_cell.py            # verify + export build/*.step, *.stl, assembly.json, bom.md
+python3 mirror_cell.py --check    # verify only; refuses a stale BOM.md, writes nothing
 python3 -m http.server 8018       # then open http://localhost:8018/
 ```
+
+**The tube-screw inserts are ruthex RX-10-24x9.5**, and the model now carries their
+published numbers (`INSERT_OD`, `INSERT_HOLE_D`, `INSERT_MIN_WALL`, `INSERT_L`) because
+assertions depend on them. The 6.5 mm bore is drawn nominal and shrinks onto ruthex's
+6.4 mm recommended hole — **do not compensate it**. The tight dimension is the roof over
+the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over the
+7.1 mm insert, not the 6.5 mm bore it melts into, which would flatter it at 3.10 mm.
 
 | Part | Qty | Volume | Notes |
 |---|---|---|---|
@@ -148,24 +156,47 @@ and the landing-pad recess ceilings are bridged.
 
 ## Open items / candidate tweaks
 
-- **`FIT_SLIP`** — predicted, not measured. Blocks the mirror plate only.
+Reviewed 2026-07-29. What is left that actually gates a print is the coupon work above —
+everything in the first group below resolves with the coupon in hand plus one bolt.
+
+**Blocking:**
+
+- **`FIT_SLIP`** — predicted, not measured. Blocks the mirror plate only. Row H, one
+  10-24 hex bolt.
 - **The press fit in a 2.2 mm knob wall** — see above. Blocks the knobs only.
-- **Knob and plate outlines are functional but aesthetically provisional.** Never styled.
-  The knobs are now the *only* thing you touch, so they are the ones worth styling.
-- **Fan** — mounting holes exist on the tube plate; **no fan is bought**. The viewer shows
-  a 40 mm one so the assembled cell can be seen whole, and it fits (corners clear the push
-  knobs by 3.06 mm), but that solid is a stand-in drawn in `fan()` — see the traps.
-- **Bolt heads and springs are procedural stand-ins in the viewer.** Their hex phase is not
-  matched to anything, so a mis-keyed bolt head would still look fine. The hex nut and
-  washer are real solids and *are* checked. Consider importing a vendor solid for the bolts.
-- **Seating checks cover hex_nut (in both hosts), washer and pocket_cap.** Extending the
-  same solid-vs-solid test to the bolt heads in their knob pockets and the clips on the
-  post tops would close the last unchecked fits.
-- **§7's spring numbers are now computed, but the spring itself is still unbought.** The
-  rate is inferred from geometry (≈5.4 active coils at 0.9 mm wire, 8.1 mm mean coil); a
-  real spring's coil count may differ and moves the preload proportionally.
-- **Mirror plate thickness 0.375"** is resolved but tight — 3.45 mm of floor under the
-  pull-bolt head. Any change to the RTV well or cap depths eats into it.
+- **`coupon_insert` has never been read.** Both heat-set bores are unmeasured and the
+  10-24 one is horizontal with 3.1 mm of roof. Those three screws carry the whole cell.
+  Do this *before* the tube plate goes on the bed — it is the 3½ hour print.
+
+**Closed or downgraded:**
+
+- ~~Fan~~ — future-proofing, not vital. Holes exist, envelope is checked, nothing is
+  bought. The solid in the viewer remains a stand-in — see the traps.
+- ~~Tube-mount screw length~~ — ½", or ⅝" once the fender washer is on. Hole positions
+  evaluated; confirmed at assembly rather than modelled.
+- ~~Springs~~ — bought. 1.0 mm wire × 9 mm OD × 20 mm 304 stainless, the substitute
+  recorded in spec §7: ≈18 lb/in against the specified 13, so ≈1.4× preload and knobs
+  that turn ~40% stiffer. Error runs the safe way. Confirm the feel on first assembly.
+- ~~Knob geometry~~ — 2.5 cc and ~15 min each, so iterating is cheap. A fitting session,
+  not a design unknown. Outlines are still unstyled if you want them prettier.
+- ~~Seating checks for bolt heads and clips~~ — **added, and both were verified by
+  breaking the model.** See the method note.
+- ~~Mirror plate thickness~~ — resolved at 0.375", and now commented at the constant with
+  the reason. It is pinned by **bolt length, not stiffness**: the pull-bolt head is
+  captured in this plate with its nut outside, so thickness comes straight off the thread
+  the nut runs on. At 0.500" with the same 1½" bolts the thread runs out **+0.23 mm**
+  past nominal instead of +3.41 mm — one collimation and no second chance. 1⅝" pull bolts
+  restore it but break the one-length rule; 1¾" overshoots and the spring goes slack
+  first. All three were run. Do not thicken it without re-opening ADR-0002.
+
+**Still open, non-blocking:**
+
+- **Bolt and spring solids in the viewer are still procedural.** The heads are now checked
+  against their pockets by `verify()`, but what the *viewer* draws is unmatched. A vendor
+  solid would close the cosmetic gap.
+- **Spring rate is still inferred, not published.** No vendor at this price states active
+  coil count; across a plausible 4.5–6 coil spread the bought spring lands 16–21 lb/in.
+  Resolves by feel on first assembly.
 
 ## Method note
 
@@ -173,6 +204,22 @@ Assertions in `verify()` encode the spec, and several of them were **verified by
 reintroducing the bug on purpose** — that is worth continuing. In this project three
 checks initially passed a broken model because the *check* was wrong, so a new assertion
 is not trustworthy until it has been seen to fail.
+
+**2026-07-29 — a fourth check joined that list, and the cause is worth knowing.** The new
+bolt-head test was written above `solid(nm)`, and `verify()` also bound `solid` as a float
+(`free, solid = 20.0, 6.2`) further up. The check therefore intersected against a float,
+threw, and a blanket `except Exception: clash = 0.0` reported **PASS on four separately
+broken models**. The float is now `solid_h`, the check sits below `solid(nm)`, and its
+intersection is deliberately *not* wrapped — an exception there should be a crash, not a
+green tick. The other seating checks still carry that `except`; it is load-bearing for
+genuinely disjoint solids, but it is the reason this bug was invisible.
+
+**A check must be asked where it can also be answered.** The BOM snapshot check lived in
+`verify()`, which raises `SystemExit` before the write — so editing any BOM note failed the
+run that would have fixed it, and every rerun failed identically. It is now a query
+(`bom_snapshot_stale()`) asked *after* the write: the default run repairs the file and says
+which rows moved, and `--check` refuses a stale one and writes nothing. Same guarantee,
+minus the deadlock.
 
 The strongest checks are the ones that test **solids against solids** (does this part fit
 in that recess; is the mirror's volume clear) rather than comparing numbers that were

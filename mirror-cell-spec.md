@@ -265,6 +265,26 @@ At the 0.600" gap, 13 lb/in gives **1.92 lb preload per Station, 5.77 lb total**
 2.65 lb of mirror and plate — **2.18×**, so the Mirror plate stays seated against its stop
 in any tube orientation while you adjust, and is still finger-turnable.
 
+**A substitute that works: uxcell 1.0 mm wire × 9 mm OD × 20 mm, 304 stainless**
+(Amazon `B0GFCR3MPW`, 10 pcs, checked 2026-07). The exact 0.9 mm spring above is awkward
+to source; this one is stocked. Everything geometric is unchanged — same OD, so the
+9.8 mm seat still clears; same free length, so the slack/thread-runout margins of §4 are
+untouched; ID 7.0 mm still clears the #10 shank it rides on; solid height ~7.4 mm, still
+far inside the coil-bind check. Only the rate moves: **≈ 18 lb/in**, giving **2.64 lb per
+Station, 7.9 lb total, 2.99×** the moving assembly. Two effects partly cancel — 0.9 → 1.0
+mm wire is 1.52× on `d⁴`, while 304 stainless has G ≈ 69 GPa against the ~79.6 GPa music
+wire the 13 lb/in figure assumes. Net ≈ 1.4× the design preload.
+
+Caveats. The Pull knobs turn ~40% stiffer; still finger-turnable, but check the feel on
+first assembly rather than trusting the number. And no listing at this price publishes
+active coil count, so the rate is a computed estimate, not a spec — across a plausible
+4.5–6 coil spread it lands 16–21 lb/in (2.7–3.6×). That uncertainty is tolerable **only
+because the error runs the safe way**: too stiff costs finger torque, too soft costs the
+mirror plate its seat. Substitute upward in wire diameter, never downward — the same
+vendor's 0.8 mm × 9 mm × 20 mm computes to ~6.8 lb/in and **1.14×**, below even the
+1.31× regression described next, and at the fine-pitch end of its coil spread it does not
+hold the assembly up at all.
+
 **The spring's span is the gap *plus the seat*, and that is not a detail.** The seat is a
 counterbore in the Tube plate's front face, so every millimetre of it lengthens the spring
 and throws away preload. The figures above hold at the current **1.0 mm** seat. The seat

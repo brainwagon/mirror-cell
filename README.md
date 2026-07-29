@@ -24,9 +24,18 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 113 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
+Runs 121 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
 and the bill of materials — `build/bom.md`, `build/bom.csv`, and the committed snapshot
-`BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries).
+`BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries). If a
+BOM row changed, the snapshot is rewritten and the run says which rows moved — **commit
+it**. To check without writing anything:
+
+```sh
+python3 mirror_cell.py --check
+```
+
+which verifies and then *refuses* a stale `BOM.md` instead of repairing it. That is the
+CI entry point, and the one to run on a fresh checkout.
 The assertions encode the spec — the three gaps that must never close, both fastener
 bearing floors, assembly clearances, spring travel, post placement, and printer bed fit.
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were

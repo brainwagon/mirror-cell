@@ -10,7 +10,7 @@ dimensioned in inches, so inch() converts at the boundary.
     python3 mirror_cell.py          # writes STEP + STL for every part into build/
 """
 
-from math import sqrt, cos, sin, radians, degrees, hypot, atan2
+from math import sqrt, cos, sin, radians, degrees, hypot, atan2, pi
 from build123d import *
 
 
@@ -33,7 +33,14 @@ R_PULL = inch(2.250)  # pull bolt circle == support point circle (ADR-0001)
 # --- axial stack (spec §4) ---------------------------------------------------
 TUBE_PLATE_T = inch(0.500)
 PLATE_GAP = inch(0.600)  # nominal; wing nuts set the real value
-MIRROR_PLATE_T = inch(0.375)  # OPEN ITEM: proposed, not verified
+# RESOLVED at 0.375", and pinned by the BOLTS, not by stiffness. The pull bolt's head is
+# captured in this plate with its nut outside at the rear, so every millimetre of
+# thickness comes straight off the thread the nut runs on. At 0.500" with the same 1.5"
+# bolts the thread runs out +0.23 mm past nominal instead of +3.41 mm -- one collimation
+# and no second chance. Restoring the range needs 1.625" pull bolts, which breaks the
+# one-length rule below; 1.75" overshoots and the spring goes slack first. Verified by
+# running all three. Do not thicken this plate without re-opening ADR-0002.
+MIRROR_PLATE_T = inch(0.375)
 RTV_T = inch(0.0625)  # bond thickness, set by the printed shims
 CLIP_GAP = inch(0.030)  # clip -> mirror front face
 POST_GAP = inch(0.030)  # centering post -> mirror edge, radial
@@ -114,6 +121,15 @@ FIT = FIT_PRESS    # default for hex_prism(); every call site passes one explici
 
 INSERT_BORE_D = 6.5  # 10-24 heat-set insert
 INSERT_DEPTH = 14.0
+# Vendor data for ruthex RX-10-24x9.5, the insert this bore is dimensioned around. Here
+# rather than in a comment in the BOM because two assertions depend on them: the wall the
+# tube screws pull against is measured from the insert's OD, not from the bore it melts
+# into, and the bore has to land on the vendor's recommended hole AFTER shrink.
+INSERT_OD = 7.1        # D1, the seated diameter -- what the surrounding wall is measured from
+INSERT_HOLE_D = 6.4    # D3, ruthex's recommended hole in the plastic
+INSERT_MIN_WALL = 2.6  # W, ruthex's minimum wall around a seated insert
+INSERT_L = 9.5         # L; the bore is deeper on purpose, see INSERT_DEPTH
+PRINT_SHRINK = 0.008   # measured on the fit coupon, 0.69-0.94% -- see TEST-COUPON.md
 
 WASHER_D = inch(0.500)  # #10 flat washer, the landing pad
 WASHER_T = inch(0.050)
@@ -138,6 +154,18 @@ SPRING_SEAT_D = SPRING_OD + 0.8
 # geometry. verify() now does. The seat is belt-and-braces anyway -- the spring rides on
 # the pull bolt shank and cannot wander.
 SPRING_SEAT_DEPTH = 1.0
+
+# Masses, for the preload check only -- nothing is drawn from these. The spring has to
+# hold the mirror plate against its stop in any tube orientation, so what it works against
+# is the glass plus everything bolted to the moving plate.
+GLASS_RHO = 2.35e-3     # g/mm^3; between borosilicate 2.23 and soda-lime 2.50
+ABS_RHO = 1.04e-3       # g/mm^3, solid
+# Printed parts are not solid. The plate is 6 walls / 8 solid / 40% gyroid and the clips
+# are 100%; 0.60 is the blended fraction of the drawn volume that is actually filament.
+# The preload check has ~2x of margin, so it is insensitive to this to well within its
+# own uncertainty -- what matters is that it TRACKS MIRROR_PLATE_T instead of ignoring it.
+ABS_PACKING = 0.60
+HARDWARE_G = 20.0       # 3 bolts + 3 washers + 3 caps riding on the moving plate
 
 # --- mirror plate detail -----------------------------------------------------
 POST_IR = MIRROR_D / 2 + POST_GAP  # post inner face
@@ -174,6 +202,12 @@ RTV_WELL_DEPTH = 1.0
 CAP_D = 12.0        # counterbore in the mirror plate
 CAP_CLEAR = 0.5     # diametral clearance: the disc must always drop in
 CAP_T = 1.5
+
+# What is left under the pull-bolt head after the RTV well, the cap and the head pocket
+# are stacked into the plate. This carries the mirror's weight, and it is the number the
+# slicer note quotes -- derived, so thickening or thinning the plate cannot leave the
+# printing advice claiming a floor the part no longer has.
+MP_FLOOR = MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T - (HEAD_T + 0.4)
 
 # --- knobs (spec 8.5, docs/adr/0002) -----------------------------------------
 # Both rear controls are printed. That is what lets them clear each other RADIALLY --
@@ -618,8 +652,9 @@ PRINT = {
                    "failure mode."),
     "mirror_plate": ("6 walls / 8 solid / 40% gyroid",
                      "Rear face down, posts up, no supports. The 8 bottom layers are not "
-                     "a nicety -- the pull-bolt bearing floor is only 3.45 mm and carries "
-                     "the mirror, and the landing-pad recess ceilings are bridged."),
+                     f"a nicety -- the pull-bolt bearing floor is only {MP_FLOOR:.2f} mm "
+                     "and carries the mirror, and the landing-pad recess ceilings are "
+                     "bridged."),
     "clip": ("5 walls / 6 solid / 100%",
              "Prints flat, which puts the 0.030\" air-gap face on the bed as a clean "
              "surface instead of a supported overhang. Separate from the posts on "
@@ -672,7 +707,16 @@ def purchased(total_cc=None):
         {"qty": 3, "item": "10-24 heat-set insert",
          "spec": f"{INSERT_BORE_D:g} mm bore x {INSERT_DEPTH:g} mm",
          "note": "Radial, in the tube plate rim, at mid-thickness. These three screws "
-                 "carry the entire cell -- mirror, plates and hardware."},
+                 "carry the entire cell -- mirror, plates and hardware. Dimensioned "
+                 "around [ruthex RX-10-24x9.5](https://www.ruthex.de/en/products/"
+                 "ruthex-10-24-gewindeeinsatz-zoll-unc-50-stuck-rx-10-24x9-5-"
+                 "gewindebuchsen-aus-messing-stabile-einpressmutter-durch-warme-in-3d-"
+                 "druck-teile-aus-kunststoff-einsetzbar) -- 7.1 mm OD, 9.5 mm long, "
+                 f"6.4 mm recommended hole. The {INSERT_BORE_D:g} mm bore drawn here "
+                 "prints at ~6.45 mm at the measured 0.8% shrink, so do NOT compensate "
+                 "it. Roof over the seated insert is 2.80 mm against ruthex's 2.6 mm "
+                 "minimum wall -- the tight dimension, and why the insert coupon is "
+                 "worth reading before this plate goes on the bed."},
         {"qty": 3, "item": "#10 screw (tube mount)",
          "spec": "length to suit: tube wall 0.125\" + washer + insert reach",
          "note": "Goes through the sonotube into the inserts above. Drill the tube using "
@@ -774,6 +818,32 @@ def bom_csv(rows):
     return buf.getvalue()
 
 
+def bom_snapshot_stale(rows, path="BOM.md"):
+    """Which BOM rows the committed snapshot no longer matches.
+
+    BOM.md is committed because build/ is gitignored, so it is the copy anyone reading the
+    repo (or a diff) actually sees -- and being committed is exactly what lets it go stale.
+    Compared line for line, not byte for byte: the snapshot carries part volumes and a
+    caller may not have built the solids.
+
+    This is a query, not an assertion, and that is the point. Asked inside verify() it
+    failed the run that would have fixed it; asked here, the writer can repair the file and
+    --check can still refuse to.
+    """
+    import os
+    if not os.path.exists(path):
+        return [r["item"] for r in rows]
+    lines = open(path).read().splitlines()
+
+    def current(r):
+        head = (f"| {r['qty']} | `{r['item']}` |" if r["section"] == "printed"
+                else f"| {r['qty']} | {r['item']} |")
+        return any(ln.startswith(head) and ln.rstrip().endswith(r["note"] + " |")
+                   for ln in lines)
+
+    return [r["item"] for r in rows if not current(r)]
+
+
 def assembly():
     parts = [
         {"name": "tube_plate", "stl": "tube_plate.stl", "color": "#3d4450",
@@ -870,7 +940,7 @@ def verify():
     chk(RTV_T > 1.0, f"RTV bond thickness = {RTV_T:.3f} mm")
 
     # --- pull bolt head bears on a sound floor, in compression (spec §6) ------
-    floor = MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T - (HEAD_T + 0.4)
+    floor = MP_FLOOR
     chk(floor >= 3.0, f"mirror plate floor under hex pocket = {floor:.2f} mm (>= 3.0)")
 
     # --- push bolt nut floor --------------------------------------------------
@@ -901,9 +971,13 @@ def verify():
     chk(web >= 1.5, f"web between fan hole and centre bore = {web:.2f} mm")
 
     # --- spring works across the whole travel (spec §4, §7) -------------------
-    free, solid = 20.0, 6.2  # 0.9 mm wire x 9 mm OD x 20 mm FL, ~5 active coils
+    # solid_h, NOT solid: this function also defines solid(nm) further down to look parts
+    # up by name, and a float bound to that name here shadows it for everything in between.
+    # A check written in that gap silently intersected against a float, threw, and was
+    # turned into a PASS by a blanket except. Do not reintroduce the short name.
+    free, solid_h = 20.0, 6.2  # 0.9 mm wire x 9 mm OD x 20 mm FL, ~5 active coils
     chk(free > PLATE_GAP, f"spring free length {free} > gap {PLATE_GAP:.2f} mm (stays preloaded)")
-    chk(solid < PLATE_GAP - 3.0, f"solid height {solid} well below gap {PLATE_GAP:.2f} mm (no coil bind)")
+    chk(solid_h < PLATE_GAP - 3.0, f"solid height {solid_h} well below gap {PLATE_GAP:.2f} mm (no coil bind)")
     chk(SPRING_SEAT_D > SPRING_OD, "spring seat clears spring OD")
 
     # --- posts land ON the stations, and on plate material --------------------
@@ -977,7 +1051,16 @@ def verify():
     # Spring preload, computed from geometry rather than typed into the spec. The seat
     # is part of the span: at 2.5 mm it quietly cost 40% of the preload.
     preload = (SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)) * SPRING_RATE  # N
-    moving = 11.8  # N; 463 cc of glass at 2.35 plus ~0.12 kg of plate, clips, hardware
+    # The moving assembly, computed rather than typed in. It was 11.8 N as a literal, which
+    # would not have followed MIRROR_PLATE_T: thickening the plate to 0.500" adds ~28 g and
+    # the check would still have printed the old ratio. Glass and printed parts come from
+    # the model's own solids; only the steel is an allowance, because it is purchased.
+    glass = pi * (MIRROR_D / 2) ** 2 * MIRROR_T * GLASS_RHO          # g
+    printed = (mirror_plate().volume + 3 * clip().volume) * ABS_RHO * ABS_PACKING
+    moving = (glass + printed + HARDWARE_G) * 9.81e-3                # N
+    chk(abs(moving - 11.8) < 1.5,
+        f"moving assembly {moving/4.4482:.2f} lb computed from solids "
+        f"(glass {glass:.0f} g + printed {printed:.0f} g + steel {HARDWARE_G:.0f} g)")
     chk(3 * preload > 1.5 * moving,
         f"spring preload {preload/4.4482:.2f} lb/station, {3*preload/4.4482:.2f} lb total "
         f"vs {moving/4.4482:.2f} lb of moving assembly ({3*preload/moving:.2f}x)")
@@ -1141,27 +1224,20 @@ def verify():
     chk(all(r["item"] in md for r in B) and md.count("\n|") >= len(B),
         f"the Markdown BOM renders every one of its {len(B)} lines")
 
-    # BOM.md is a COMMITTED snapshot -- build/ is gitignored, so it is the copy anyone
-    # reading the repo (or a diff) actually sees. Being committed is exactly what lets it
-    # go stale, so it is checked here rather than trusted. Line for line, not byte for
-    # byte: the snapshot carries part volumes and verify() does not build the solids.
-    if os.path.exists("BOM.md"):
-        lines = open("BOM.md").read().splitlines()
-        def current(r):
-            head = (f"| {r['qty']} | `{r['item']}` |" if r["section"] == "printed"
-                    else f"| {r['qty']} | {r['item']} |")
-            return any(ln.startswith(head) and ln.rstrip().endswith(r["note"] + " |")
-                       for ln in lines)
-        stale = [r["item"] for r in B if not current(r)]
-        chk(not stale,
-            f"the committed BOM.md snapshot is current (rerun mirror_cell.py); "
-            f"stale: {stale}")
+    # The BOM.md snapshot is NOT checked here. It used to be, and the check deadlocked its
+    # own fix: verify() raises SystemExit on failure and the write happens after it, so the
+    # first run after editing any BOM note failed, skipped the write, and every rerun failed
+    # identically. Currency is now enforced where it can also be repaired -- see
+    # bom_snapshot_stale() and the --check flag.
 
     # --- parts that sit in recesses must actually fit in them -----------------
     # Intersecting the placed solid with its plate catches a mis-keyed hex directly:
     # a nut rotated to its station angle collides with the pocket wall.
+    # "clip" closes one of the two fits that had no solid-vs-solid test: the clips are
+    # drawn separately from the posts they land on, so nothing but this catches a clip
+    # whose underside or M3 bore has drifted into the post top.
     seated = {"hex_nut": ("tube_plate", "pull_knob"), "washer": ("mirror_plate",),
-              "pocket_cap": ("mirror_plate",)}
+              "pocket_cap": ("mirror_plate",), "clip": ("mirror_plate",)}
     parts_by_name = {p["name"]: p for p in A["parts"]}
     for nm, hosts in seated.items():
         # A part may sit in more than one host now -- three of the six nuts are captured
@@ -1175,9 +1251,35 @@ def verify():
                 clash = (placed & body).volume
             except Exception:
                 clash = 0.0
+            # Clips are placed on the axis and rotated out to their station, so radius
+            # says nothing about which one failed; name them by angle instead.
+            r = hypot(*inst["pos"][:2])
+            where = f"r={r:.0f}" if r > 1.0 else f"{inst.get('rot', 0.0):.0f} deg"
             chk(clash < 1.0,
-                f"{nm} at r={hypot(*inst['pos'][:2]):.0f} seats in its "
+                f"{nm} at {where} seats in its "
                 f"{'/'.join(hosts)} recess (overlap {clash:.2f} mm^3)")
+
+    # --- the bolt HEADS, against the pockets that capture them ----------------
+    # The other fit that had no solid test. The heads are procedural stand-ins in the
+    # viewer with unmatched hex phase, so a mis-keyed head still LOOKS right on screen --
+    # only a real hex solid against the real pocket says whether it goes in.
+    #
+    # MUST stay below solid(nm), and the intersection is deliberately NOT wrapped in a
+    # blanket except: written above it and wrapped, this check intersected a float, threw,
+    # and reported PASS on four separately broken models. An exception here should be a
+    # crash, not a green tick.
+    head = extrude(RegularPolygon(radius=HEAD_AF / sqrt(3.0), side_count=6), HEAD_T)
+    cap_z = (MIRROR_PLATE_T - RTV_WELL_DEPTH) - CAP_T
+    for nm, host, placed in (
+            ("push bolt head", "push_knob", Pos(0, 0, KNOB_T - HEAD_T) * head),
+            ("pull bolt head", "mirror_plate",
+             Compound([at(a, R_PULL, cap_z - (HEAD_T + 0.4)) * head for a in STATIONS])),
+    ):
+        body = solid(host)
+        assert placed.volume > 0 and body.volume > 0, f"{nm}: empty operand"
+        chk((placed & body).volume < 1.0,
+            f"{nm} seats in its {host} pocket "
+            f"(overlap {(placed & body).volume:.2f} mm^3)")
 
     # --- the tube stub, and the fan in the space the knobs left ---------------
     chk(abs(TUBE_OD - TUBE_ID - 2 * TUBE_WALL) < 1e-9 and abs(TUBE_WALL - inch(0.125)) < 1e-9,
@@ -1284,10 +1386,33 @@ def verify():
     # full width perpendicular to the station ray is 2*(TP_FLAT_D - r/2)/cos(30), and the
     # radial insert bore enters at the rim, where the tab is narrowest.
     tab = 2 * (TP_FLAT_D - TP_ARC_R * sin(radians(30))) / cos(radians(30))
-    wall = (tab - INSERT_BORE_D) / 2
+    # Measured from the SEATED INSERT, not the bore: the insert is 0.6 mm fatter than the
+    # hole it melts into, and it is the insert the screw pulls against.
+    wall = (tab - INSERT_OD) / 2
     chk(wall >= 3.0,
         f"corner tab is {tab:.1f} mm wide at the rim -> {wall:.1f} mm of ABS each side "
-        f"of the insert bore")
+        f"of the seated insert")
+
+    # --- the roof over the radial bore: the tight dimension in this design -----
+    # The bore is at mid-thickness in the tube plate, so the wall above and below it is
+    # whatever the plate has left. Nothing enforced this before: the coupon check only
+    # proved the COUPON reproduced the roof, which it would have done just as happily at
+    # 1 mm. These three screws carry the entire cell, so the wall they pull against is
+    # held to the vendor's own minimum, and it is measured over the seated insert.
+    roof = (TUBE_PLATE_T - INSERT_OD) / 2
+    chk(roof >= INSERT_MIN_WALL,
+        f"roof over the seated insert = {roof:.2f} mm, ruthex minimum {INSERT_MIN_WALL:.2f}"
+        f" (bore alone would read {(TUBE_PLATE_T - INSERT_BORE_D)/2:.2f} mm and flatter)")
+
+    # The bore is drawn NOMINAL and shrinks into the vendor's recommended hole -- the same
+    # convention as the tube plate OD. Compensating it would print it oversize and the
+    # knurl would have nothing to bite.
+    chk(abs(INSERT_BORE_D * (1 - PRINT_SHRINK) - INSERT_HOLE_D) <= 0.1,
+        f"bore {INSERT_BORE_D:g} mm prints at {INSERT_BORE_D*(1-PRINT_SHRINK):.2f} mm "
+        f"against ruthex's {INSERT_HOLE_D:g} mm recommended hole")
+    chk(INSERT_DEPTH > INSERT_L,
+        f"bore {INSERT_DEPTH:g} mm is deeper than the {INSERT_L:g} mm insert, so the "
+        f"screw tip runs out past it")
 
     # --- everything fits the printer ------------------------------------------
     for name, fn in PARTS.items():
@@ -1304,15 +1429,20 @@ def verify():
 
 
 if __name__ == "__main__":
-    import os
+    import os, sys
+    # --check is the CI entry point: verify, refuse a stale snapshot, write nothing. The
+    # default run is the author's, and it REPAIRS the snapshot rather than failing on it.
+    check_only = "--check" in sys.argv
     verify()
     print()
-    os.makedirs("build", exist_ok=True)
+    if not check_only:
+        os.makedirs("build", exist_ok=True)
     vols = {}
     for name, fn in PARTS.items():
         part = fn()
-        export_step(part, f"build/{name}.step")
-        export_stl(part, f"build/{name}.stl")
+        if not check_only:
+            export_step(part, f"build/{name}.step")
+            export_stl(part, f"build/{name}.stl")
         vols[name] = part.volume
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
@@ -1320,29 +1450,45 @@ if __name__ == "__main__":
 
     for name, fn in HARDWARE.items():
         part = fn()
-        export_stl(part, f"build/{name}.stl")
+        if not check_only:
+            export_stl(part, f"build/{name}.stl")
         bb = part.bounding_box()
         print(f"{name:14s} (purchased)          "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
 
     import json
     A = assembly()
-    with open("build/assembly.json", "w") as f:
-        json.dump(A, f, indent=1)
-
     # The BOM is written with real volumes, which is why it happens here and not in
     # assembly(): the copy in assembly.json is the same rows, unquantified.
     rows = bom(A["parts"], vols)
     md = bom_markdown(rows)
-    with open("build/bom.md", "w") as f:
-        f.write(md)
-    with open("build/bom.csv", "w") as f:
-        f.write(bom_csv(rows))
-    # ...and a snapshot at the top level, which is the one that gets committed: build/ is
-    # gitignored, so without this the repo has no readable buy list at all. verify()
-    # checks it against the model, so a stale snapshot fails the build rather than
-    # quietly sending someone to the shop with last month's quantities.
-    with open("BOM.md", "w") as f:
-        f.write(md)
-    print(f"\nbuild/assembly.json written; build/bom.md, build/bom.csv and the "
-          f"committed BOM.md ({len(rows)} lines)")
+    stale = bom_snapshot_stale(rows)
+
+    if check_only:
+        # CI, or a fresh checkout. Nothing is written, so a stale snapshot is somebody
+        # having committed the model without rerunning it -- and that is a hard failure.
+        if stale:
+            raise SystemExit(
+                f"\nBOM.md is STALE and --check writes nothing.\n"
+                f"  rows the snapshot no longer matches: {stale}\n"
+                f"  fix: rerun `python3 mirror_cell.py` and commit BOM.md")
+        print("\n--check: all checks passed and BOM.md is current; nothing written")
+    else:
+        with open("build/assembly.json", "w") as f:
+            json.dump(A, f, indent=1)
+        with open("build/bom.md", "w") as f:
+            f.write(md)
+        with open("build/bom.csv", "w") as f:
+            f.write(bom_csv(rows))
+        # ...and a snapshot at the top level, which is the one that gets committed:
+        # build/ is gitignored, so without this the repo has no readable buy list at all.
+        with open("BOM.md", "w") as f:
+            f.write(md)
+        print(f"\nbuild/assembly.json written; build/bom.md, build/bom.csv and the "
+              f"committed BOM.md ({len(rows)} lines)")
+        # Reported AFTER the write, so this is news rather than an obstacle: the file has
+        # already been brought up to date and the line just says what moved.
+        if stale:
+            print(f"  BOM.md updated -- rows that changed: {stale}")
+            print(f"  commit it; `python3 mirror_cell.py --check` is what refuses a "
+                  f"stale snapshot.")
