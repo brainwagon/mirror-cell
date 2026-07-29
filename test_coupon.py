@@ -25,6 +25,7 @@ TEST-COUPON.md for what to do with it once it is off the bed.
 """
 
 from math import sqrt
+from pathlib import Path
 from build123d import *
 
 import mirror_cell as mc
@@ -52,7 +53,7 @@ ENGRAVE = 0.6    # deep enough to survive a 0.2 mm layer height and still read
 LABEL_H = 4.5
 NOTCH = 6.0      # orientation key, at the tightest-fit corner
 
-# Landing pad: the #10 washer recess is on the plate's REAR face, which is the face
+# Landing pad: the #4 washer recess is on the plate's REAR face, which is the face
 # that prints against the bed. Elephant foot lands on exactly this feature, so the
 # coupon reproduces it on ITS bed face too — testing it on a top face would prove
 # nothing. Two clearances: the designed one, and one step looser.
@@ -113,7 +114,7 @@ def fit_coupon():
     # --- landing pads, on the BED face ----------------------------------------
     for j, pf in enumerate(PAD_FITS):
         p -= Pos(-17.0 + j * 15.0, MISC_Y) * extrude(
-            Circle(mc.WASHER_D / 2 + pf), mc.WASHER_T + 0.15)
+            Circle(mc.PAD_OD / 2 + pf), mc.PAD_T + 0.15)
 
     # --- spring seat ----------------------------------------------------------
     p -= Pos(15.0, MISC_Y, COUPON_T - mc.SPRING_SEAT_DEPTH) * extrude(
@@ -158,6 +159,14 @@ def insert_coupon():
 
 COUPONS = {"coupon_fit": fit_coupon, "coupon_insert": insert_coupon}
 
+# The coupons print at the TUBE PLATE's settings, and this is that reference rather than a
+# copy of it. TEST-COUPON.md used to say "matching the tube plate" in prose while the
+# numbers lived in mirror_cell.py, so changing the plate would have left the sentence true
+# and the coupon wrong -- and a coupon printed at settings the real part does not use
+# measures the wrong thing. Reading FIT off a coupon only means something if the walls,
+# shells and infill above the pocket are the ones the part will actually have.
+COUPON_SLICE = mc.PRINT["tube_plate"][0]
+
 # Shown in the viewer's download list. mirror_cell.py writes its own parts into
 # assembly.json and cannot write these -- it must not import this file, since this file
 # imports it -- so the coupons arrive as a second manifest the page loads if it is there.
@@ -169,7 +178,8 @@ NOTES = {"coupon_fit": "hex pocket ladder + shrink gauge",
 def manifest():
     return {"downloads": [
         {"name": n, "label": LABELS[n], "note": NOTES[n], "kind": "coupon", "qty": 1,
-         "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in COUPONS]}
+         "step": f"build/{n}.step", "stl": f"build/{n}.stl",
+         "3mf": f"build/3mf/{n}.3mf"} for n in COUPONS]}
 
 
 # ---------------------------------------------------------------- VERIFY
@@ -209,7 +219,7 @@ def verify():
         f"nut row to plate edge = {GAUGE_Y/2 - NUT_Y - corners/2:.2f} mm")
     floor = COUPON_T - NUT_POCKET_H
     chk(floor >= 1.0, f"floor under the deepest pocket = {floor:.2f} mm")
-    chk(COUPON_T - mc.CAP_T - (mc.WASHER_T + 0.15) > 1.0,
+    chk(COUPON_T - mc.CAP_T - (mc.PAD_T + 0.15) > 1.0,
         "cap counterbore and the bed-face pads do not meet through the coupon")
 
     # --- labels must be legible and must not cut into a pocket ----------------
@@ -249,12 +259,26 @@ def verify():
     chk(RIB_H > mc.M3_INSERT_DEPTH,
         f"rib {RIB_H:.0f} mm tall takes a {mc.M3_INSERT_DEPTH:.0f} mm insert")
 
+    # --- the coupons print at the settings of the part they stand in for -------
+    # The whole value of a fit coupon is that its pocket sees what the real pocket sees.
+    # Asserted against the tube plate's Slice rather than against copied numbers, so the
+    # two cannot drift; if the plate's settings change, this coupon changes with them.
+    chk(COUPON_SLICE is mc.PRINT["tube_plate"][0],
+        f"coupons print at the tube plate's settings ({COUPON_SLICE.prose()})")
+    chk(COUPON_SLICE.walls is not None and COUPON_SLICE.density < 100,
+        f"the reference part is one with real walls and sparse infill, so the coupon "
+        f"exercises them ({COUPON_SLICE.prose()})")
+    for name in COUPONS:
+        z0 = COUPONS[name]().bounding_box().min.Z
+        chk(abs(z0) < 1e-6, f"{name} rests on the bed (z_min = {z0:+.3f} mm)")
+
     # --- the viewer's coupon manifest -----------------------------------------
     D = manifest()["downloads"]
     chk({d["name"] for d in D} == set(COUPONS),
         f"manifest offers every coupon: {sorted(d['name'] for d in D)}")
     chk(all(d["step"] == f"build/{d['name']}.step" and
-            d["stl"] == f"build/{d['name']}.stl" for d in D),
+            d["stl"] == f"build/{d['name']}.stl" and
+            d["3mf"] == f"build/3mf/{d['name']}.3mf" for d in D),
         "manifest points at the files this script actually writes")
     chk(all(d["label"] and d["note"] for d in D),
         "every coupon carries a label and a note for the panel")
@@ -282,11 +306,16 @@ if __name__ == "__main__":
         part = fn()
         export_step(part, f"build/{name}.step")
         export_stl(part, f"build/{name}.stl")
+        mc.write_3mf(part, Path(f"build/3mf/{name}.3mf"), COUPON_SLICE, part_number=name)
+        got = mc.read_3mf_config(Path(f"build/3mf/{name}.3mf"))
+        if got != COUPON_SLICE.config():
+            raise SystemExit(f"\n3MF SETTINGS DID NOT ROUND-TRIP for {name}\n"
+                             f"  wrote:  {got}\n  meant:  {COUPON_SLICE.config()}")
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
 
     import json
-    with open("build/coupons.json", "w") as f:
+    with open("build/coupons.json", "w", encoding="utf-8") as f:
         json.dump(manifest(), f, indent=1)
     print("\nbuild/coupons.json written — the viewer lists the coupons once this exists")

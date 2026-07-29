@@ -24,7 +24,8 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 121 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
+Runs 153 assertions, then writes `build/*.step`, `build/*.stl`, `build/3mf/*.3mf`
+(geometry **and** that part's slicer settings), `build/assembly.json`
 and the bill of materials — `build/bom.md`, `build/bom.csv`, and the committed snapshot
 `BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries). If a
 BOM row changed, the snapshot is rewritten and the run says which rows moved — **commit
@@ -75,11 +76,22 @@ out of the parameters, and carries one line of *why* for each row (machine screw
 screws, springs by geometry not by rate, fender washers on the outside). Assertions check
 that it lists every printed part, agrees with the download list part for part, buys
 exactly the nuts, washers, springs and screws the model draws, and leaves no row
-unannotated. Below it is every printed part and both test coupons, each
-with its STEP and (smaller) its STL. That list is generated —
-printed parts from `assembly.json`, coupons from `coupons.json` — so it cannot offer a
-file the exporter does not write, and an assertion checks that it names every part in
-`PARTS` with the right quantity. The coupon rows appear once `test_coupon.py` has been
+unannotated. Below it is every printed part and both test coupons, each with its STEP, its
+**3MF** and (smaller) its STL. The 3MF is the one to print: a solid in real units that
+also carries that part's walls, top/bottom shells and infill, so it slices without being
+dialled in. They ride as **per-object overrides** in `Metadata/model_settings.config`, an
+Orca/Bambu-family convention rather than anything in the 3MF standard — the core spec has
+no notion of a perimeter count — so in Cura and friends the file opens as plain geometry
+and the settings are ignored. **Select your own process preset first**, at 0.2 mm layers:
+the overrides sit on top of it and move only the part-specific keys, so your speeds,
+accelerations and temperatures are the ones you chose, and they survive switching presets.
+Layer height is deliberately *not* in the file — it has no per-object form, and the shell
+counts are layer counts that only buy the intended thickness at 0.2 mm. `verify()` checks the settings data, and after writing, each
+file is reopened and its config compared with what the model meant, because seven files
+with no settings in them look exactly like seven correct ones from the outside. That list
+is generated — printed parts from `assembly.json`, coupons from `coupons.json` — so it
+cannot offer a file the exporter does not write, and an assertion checks that it names
+every part in `PARTS` with the right quantity. The coupon rows appear once `test_coupon.py` has been
 run; until then the panel says so. `build/` is gitignored, so the files are whatever your
 last run produced.
 

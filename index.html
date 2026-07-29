@@ -456,8 +456,14 @@ function dlRow(d) {
   // vendor STEP has spaces in its name, hence the encode.
   const href = d.step.split('/').map(encodeURIComponent).join('/');
   const file = d.step.split('/').pop();
+  // The 3MF is the one you actually print: a solid in real units carrying the walls,
+  // shells and infill that part wants, so it needs no dialling in at the slicer. Guarded
+  // because a stale assembly.json from before 3MF export would have no such key, and a
+  // dead link is worse than an absent one.
+  const mf = d['3mf'] ? `
+    <a href="${d['3mf']}" download title="${d['3mf']}">3MF</a>` : '';
   return `<div class="row"><span class="nm">${name}${note}</span>${qty}
-    <a href="${href}" download="${file}" title="${d.step}">STEP</a>
+    <a href="${href}" download="${file}" title="${d.step}">STEP</a>${mf}
     <a class="stl" href="${d.stl}" download title="${d.stl}">STL</a></div>`;
 }
 

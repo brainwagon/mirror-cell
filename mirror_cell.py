@@ -11,6 +11,7 @@ dimensioned in inches, so inch() converts at the boundary.
 """
 
 from math import sqrt, cos, sin, radians, degrees, hypot, atan2, pi
+from pathlib import Path
 from build123d import *
 
 
@@ -64,8 +65,10 @@ MP_FLAT_D = 65.0
 CENTER_BORE = inch(1.500)
 
 # The mirror plate gets its OWN bore. The tube plate's is set by the 40 mm fan screw
-# circle; this one is limited by the landing pads (recess inner edge at 31.6 mm) and wants
-# to be as open as possible so fan air actually reaches the back of the glass.
+# circle; this one is limited by the landing pads and wants to be as open as possible so
+# fan air actually reaches the back of the glass. The pads shrank to #4 washers, so the
+# recess inner edge moved out from 31.6 to 34.0 mm and this bore now has room it is not
+# using -- opening it is free airflow if anyone wants it.
 MP_CENTER_BORE = 56.0
 # Lightening holes between the stations. Nothing structural lives at the mid-angles: the
 # dab is coaxial with its pull bolt (ADR-0001) and the push bolts are on the same rays, so
@@ -131,8 +134,23 @@ INSERT_MIN_WALL = 2.6  # W, ruthex's minimum wall around a seated insert
 INSERT_L = 9.5         # L; the bore is deeper on purpose, see INSERT_DEPTH
 PRINT_SHRINK = 0.008   # measured on the fit coupon, 0.69-0.94% -- see TEST-COUPON.md
 
-WASHER_D = inch(0.500)  # #10 flat washer, the landing pad
-WASHER_T = inch(0.050)
+# --- landing pads ------------------------------------------------------------
+# A #4 washer, NOT a #10 one, and the bore is the whole point. This was a #10 washer --
+# 0.500" OD on a 0.2031" bore -- which is BOLT_CLEAR_D, the free-fit clearance for the
+# very bolt it is supposed to stop. The push bolt is coaxial with it, so the tip passed
+# straight through the hole with 0.166 mm to spare and landed on the plastic floor of the
+# recess: the pad did nothing, and the bolt bore on ABS over a SMALLER area than if the
+# recess had not been there at all. Named PAD_*, not WASHER_*, so nobody reaches for
+# BOLT_CLEAR_D again -- a pad sized for the bolt cannot stop the bolt.
+PAD_OD = inch(0.3125)  # #4 flat washer
+PAD_ID = inch(0.125)   # must be smaller than the bolt's point, and is asserted to be
+PAD_T = inch(0.032)
+
+BOLT_MAJOR_D = inch(0.190)  # 10-24 major diameter
+# A machine screw's end is chamfered, so the flat that actually lands on the pad is
+# smaller than the major diameter. 0.85 is the conservative end of what that chamfer
+# leaves; the assertion uses it so the pad is sized against the worst screw, not the best.
+BOLT_POINT_D = BOLT_MAJOR_D * 0.85
 
 # One length for all six bolts, and it is a 1/2" multiple because odd lengths are a
 # nuisance to source. See docs/adr/0002: both rear controls are printed knobs sized to
@@ -337,7 +355,7 @@ def mirror_plate():
 
     for a in STATIONS:
         # --- landing pad: #10 washer let into the REAR face --------------------
-        p -= at(a, R_PUSH) * extrude(Circle(WASHER_D / 2 + 0.15), WASHER_T + 0.15)
+        p -= at(a, R_PUSH) * extrude(Circle(PAD_OD / 2 + 0.15), PAD_T + 0.15)
 
         # --- pull bolt head captured from the FRONT, in compression ------------
         p -= at(a, R_PULL) * extrude(Circle(BOLT_CLEAR_D / 2), MIRROR_PLATE_T)
@@ -434,8 +452,8 @@ def hex_nut():
 
 
 def washer():
-    """#10 flat washer -- the Landing pad."""
-    return extrude(Circle(WASHER_D / 2) - Circle(BOLT_CLEAR_D / 2), WASHER_T)
+    """#4 flat washer -- the Landing pad. Bore must be under the bolt's point; see PAD_ID."""
+    return extrude(Circle(PAD_OD / 2) - Circle(PAD_ID / 2), PAD_T)
 
 
 def pocket_cap():
@@ -572,9 +590,11 @@ def sequence():
          "Without the caps, silicone runs into the hex and glues the bolt head in.",
          pose(home=tp + ["hex_nut"], up=["mirror_plate", "pull_bolts", "pocket_cap"])),
         ("Drop in the landing pads",
-         "A #10 washer into each recess on the REAR face. These are what the push bolt "
-         "tips bear on. Steel on steel, so no bolt ever embosses the plastic and walks "
-         "the collimation.", None,
+         "A #4 washer into each recess on the REAR face -- a #4 under a #10 bolt, on "
+         "purpose. These are what the push bolt tips bear on. Steel on steel, so no bolt "
+         "ever embosses the plastic and walks the collimation. A #10 washer would be the "
+         "obvious thing to reach for and would be useless: its bore clears a #10 bolt, "
+         "which is exactly what a landing pad must not do.", None,
          pose(home=tp + ["hex_nut"],
               up=["mirror_plate", "pull_bolts", "pocket_cap", "washer"])),
         ("Glue the mirror",
@@ -636,43 +656,295 @@ def downloads(parts):
     writes its own manifest, because this file must not import it (it imports this one)."""
     qty = {p["name"]: len(p["instances"]) for p in parts}
     return [{"name": n, "kind": "printed", "qty": qty.get(n, 1),
-             "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in PARTS]
+             "step": f"build/{n}.step", "stl": f"build/{n}.stl",
+             "3mf": f"build/3mf/{n}.3mf"} for n in PARTS]
 
 
 # ---------------------------------------------------------------- BILL OF MATERIALS
 
-# What each printed part wants from the slicer, and the one thing about it worth knowing
-# at the bed. 0.4 mm nozzle, 0.2 mm layers, ABS at 250-255 C, bed 100-110 C, enclosure
-# closed, cooling 0-20%, 8-10 mm brim throughout -- those are settings for the machine,
-# not for a part, so they are printed once in the BOM preamble rather than on every row.
+# mm. The shell counts below are LAYERS, so they only mean a thickness at this height, and
+# the MP_FLOOR argument counts 3.45 mm as 17 layers at exactly this value. It is NOT in the
+# 3MF: layer height is a global process setting with no per-object form, so it comes from
+# whichever preset is selected -- pick a 0.2 mm one, or the shell counts buy a different
+# thickness than the design reasoned about.
+LAYER_H = 0.2
+
+
+class Slice:
+    """What one part wants from the slicer, as VALUES rather than prose.
+
+    This used to be a hand-written string per part ('6 walls / 8 solid / 40% gyroid').
+    Reading numbers back out of that to write a 3MF would have meant regex-parsing English
+    -- and two of the seven rows ('100% infill') do not even match the pattern. So the
+    values are the record and the sentence is generated from them; there is one place to
+    change and the BOM cannot disagree with the 3MF.
+
+    walls/solid are None for parts the design only ever specified as solid. That is not a
+    gap to fill in: at 100% density on an 8-layer part they cannot change the outcome, and
+    inventing numbers would have the BOM assert a spec nobody chose.
+    """
+
+    def __init__(self, density, walls=None, solid=None, pattern=None):
+        assert 0 < density <= 100, f"density {density} out of range"
+        assert (density < 100) == bool(pattern), \
+            f"pattern is meaningful below 100% and only there (density={density})"
+        self.density, self.walls, self.solid, self.pattern = density, walls, solid, pattern
+
+    def prose(self):
+        """The sentence the BOM prints. Generated, so it cannot drift from the values."""
+        if self.walls is None:
+            return f"{self.density:g}% infill"
+        tail = f"{self.density:g}%" + (f" {self.pattern}" if self.pattern else "")
+        return f"{self.walls} walls / {self.solid} solid / {tail}"
+
+    def config(self):
+        """This part's settings, as PER-OBJECT overrides.
+
+        These ride in Metadata/model_settings.config, NOT project_settings.config, and the
+        difference is the whole design. A project config REPLACES the process profile: the
+        six keys we care about were applied and the other ~275 -- every speed and
+        acceleration -- silently fell back to fdm_process_common, taking inner wall speed
+        from 180 to 80 and acceleration from 4000 to 1000. The tube plate came out at 11 h
+        instead of 7, and it was not merely slow: seam, brim and overhang handling had all
+        reverted too. Per-object overrides OVERLAY the selected preset instead, so the
+        machine settings stay yours and only the part-specific keys move. Confirmed by
+        test, including that switching presets keeps the overrides.
+
+        No layer_height here. It is a global process setting with no per-object form, so
+        the preset supplies it -- see LAYER_H, which the shell counts assume.
+        """
+        c = {"sparse_infill_density": f"{self.density:g}%"}
+        if self.pattern:
+            c["sparse_infill_pattern"] = self.pattern
+        if self.walls is not None:
+            c["wall_loops"] = str(self.walls)
+            c["top_shell_layers"] = str(self.solid)
+            c["bottom_shell_layers"] = str(self.solid)
+        return c
+
+
+# The settings, and the one thing about each part worth knowing at the bed. 0.4 mm nozzle,
+# ABS at 250-255 C, bed 100-110 C, enclosure closed, cooling 0-20%, 8-10 mm brim throughout
+# -- those are settings for the machine, not for a part, so they are printed once in the BOM
+# preamble rather than on every row. They are also RANGES, which is why they are prose here
+# and are not in the 3MF: writing them out would mean picking numbers nobody chose.
 PRINT = {
-    "tube_plate": ("5 walls / 5 solid / 40% gyroid",
+    "tube_plate": (Slice(40, walls=5, solid=5, pattern="gyroid"),
                    "Rear face down, no supports. Do not raise the infill: it adds "
                    "internal stress and INCREASES warping, which is this plate's main "
                    "failure mode."),
-    "mirror_plate": ("6 walls / 8 solid / 40% gyroid",
+    "mirror_plate": (Slice(40, walls=6, solid=8, pattern="gyroid"),
                      "Rear face down, posts up, no supports. The 8 bottom layers are not "
                      f"a nicety -- the pull-bolt bearing floor is only {MP_FLOOR:.2f} mm "
                      "and carries the mirror, and the landing-pad recess ceilings are "
                      "bridged."),
-    "clip": ("5 walls / 6 solid / 100%",
+    "clip": (Slice(100, walls=5, solid=6),
              "Prints flat, which puts the 0.030\" air-gap face on the bed as a clean "
              "surface instead of a supported overhang. Separate from the posts on "
              "purpose: printed integrally they leave a 142.4 mm opening for a 152.4 mm "
              "mirror."),
-    "push_knob": ("4 walls / 5 solid / 100%",
+    "push_knob": (Slice(100, walls=4, solid=5),
                   "Blind hex pocket for a bolt HEAD. Pressing a head in is one-way -- "
                   "there is no bore behind it to push against."),
-    "pull_knob": ("4 walls / 5 solid / 100%",
+    "pull_knob": (Slice(100, walls=4, solid=5),
                   "Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE "
                   "FIRST and press a nut in: the pocket sits in a 2.2 mm wall, and the "
                   "0.10 mm fit was measured in a 6 mm plate."),
-    "pocket_cap": ("100% infill",
+    "pocket_cap": (Slice(100),
                    "A loose fit on purpose -- bedded in a spot of RTV, so there is no "
                    "press fit to dial in."),
-    "shim": ("100% infill",
+    "shim": (Slice(100),
              "Assembly aid only. Sets the 0.0625\" bond, then comes out at step 8."),
 }
+
+
+SETTINGS_PATH = "Metadata/model_settings.config"
+MODEL_PATH = "3D/3dmodel.model"
+
+
+def insert_bosses():
+    """Solid blocks around the three radial insert bores, as slicer MODIFIERS.
+
+    The roof over a seated insert is 2.80 mm against ruthex's 2.6 mm minimum, and that
+    assertion means 2.6 mm of MATERIAL. Printed at 40% gyroid it is not: of the 3.10 mm
+    over the bore, only about 1 mm of plate top shell and 1 mm of solid over the void
+    ceiling are dense, leaving ~1.1 mm of infill in the middle. Heat-set inserts also want
+    something to displace into -- melting brass into gyroid voids gives unpredictable
+    seating and less knurl engagement -- and these three screws carry the entire cell.
+
+    Raising the infill globally is not the alternative: it adds internal stress and makes
+    the plate warp, which is its main failure mode. Nor is adding walls, which follow
+    perimeters and never reach the roof above a void. Density, locally, is the lever.
+
+    Placed off the same expression that CUTS the bore in tube_plate(), so the two cannot
+    drift apart. Sized to enclose the cylinder ruthex's minimum wall describes.
+    """
+    w = INSERT_OD + 2 * INSERT_MIN_WALL
+    return [Rot(0, 0, a) * Pos(TP_ARC_R, 0, TUBE_PLATE_T / 2)
+            * (Pos(-INSERT_DEPTH / 2, 0, 0)
+               * Box(INSERT_DEPTH, w, TUBE_PLATE_T, align=(Align.CENTER,) * 3))
+            for a in STATIONS]
+
+
+# Which parts carry modifiers, what the modifiers are, and what they override.
+MODIFIERS = {
+    "tube_plate": (insert_bosses, "insert_solid", {"sparse_infill_density": "100%"}),
+}
+
+
+def write_3mf(shape, path, slice_spec, part_number=None):
+    """A 3MF carrying the part AND the settings it wants.
+
+    build123d's Mesher writes plain 3MF; the settings ride alongside it as per-object
+    overrides, an Orca/Bambu-family convention rather than anything in the 3MF core spec
+    -- the core spec has no notion of a perimeter count, so in other slicers this opens as
+    plain geometry. The zip needs no [Content_Types].xml entry: the slicer reads the file
+    by path, and real files from this machine's slicer do not declare a .config type.
+
+    The override keys off the object id in 3D/3dmodel.model, which Mesher writes as 1 and
+    <build> references, so the id is read back rather than assumed.
+    """
+    import re, zipfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    name = part_number or path.stem
+    mods = MODIFIERS.get(name)
+    rows = "".join(f'    <metadata key="{k}" value="{v}"/>\n'
+                   for k, v in slice_spec.config().items())
+
+    mesher = Mesher(unit=Unit.MM)
+    mesher.add_shape(shape, part_number=part_number)
+    mesher.write(str(path))
+
+    if not mods:
+        # No modifiers: leave the file exactly as it has been shipping -- a single mesh
+        # object with the overrides on it. Not folded into the branch below on purpose,
+        # so the common case stays the structure that was validated in the slicer.
+        with zipfile.ZipFile(path) as z:
+            model = z.read(MODEL_PATH).decode("utf-8")
+        built = re.search(r'<item\s+objectid="(\d+)"', model)
+        assert built, f"{path}: no <build><item> to attach settings to"
+        cfg = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
+               f'  <object id="{built.group(1)}">\n'
+               f'    <metadata key="name" value="{name}"/>\n{rows}'
+               '  </object>\n</config>\n')
+        with zipfile.ZipFile(path, "a", zipfile.ZIP_DEFLATED) as z:
+            z.writestr(SETTINGS_PATH, cfg)
+        return
+
+    # With modifiers the part becomes a components object holding the real mesh plus one
+    # mesh per modifier, and <part id> matches each component's objectid -- the layout a
+    # real project file uses.
+    make, mod_name, overrides = mods
+
+    def mesh_object(sh, oid):
+        """ONE shape per object. add_shape() on a compound of disjoint solids silently
+        writes only the FIRST -- which shipped a tube plate with one insert reinforced out
+        of three, and looked correct everywhere except in the slice preview."""
+        # Mesher.write() dispatches on the extension, so the scratch file must be .3mf.
+        tmp = path.with_name(f"{path.stem}.tmp{oid}.3mf")
+        ms = Mesher(unit=Unit.MM); ms.add_shape(sh); ms.write(str(tmp))
+        with zipfile.ZipFile(tmp) as z:
+            src = z.read(MODEL_PATH).decode("utf-8")
+        tmp.unlink()
+        blk = re.findall(r"<object\b(?:(?!</object>).)*?<mesh>.*?</mesh>\s*</object>",
+                         src, re.S)[0]
+        return re.sub(r'id="\d+"', f'id="{oid}"', blk, count=1)
+
+    import uuid
+    u = lambda: str(uuid.uuid4())
+    ident = "1 0 0 0 1 0 0 0 1 0 0 0"
+    blocks = [mesh_object(shape, 1)]
+    blocks += [mesh_object(s, 2 + i) for i, s in enumerate(make())]
+    ids = list(range(1, len(blocks) + 1))
+    comps = "".join(f'    <component objectid="{i}" p:UUID="{u()}" '
+                    f'transform="{ident}"/>\n' for i in ids)
+    container = max(ids) + 1
+    model = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<model unit="millimeter" xml:lang="en-US"\n'
+        ' xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"\n'
+        ' xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">\n'
+        ' <resources>\n' + "\n".join(blocks) + "\n"
+        f'  <object id="{container}" type="model" p:UUID="{u()}">\n'
+        f'   <components>\n{comps}   </components>\n  </object>\n'
+        ' </resources>\n'
+        f' <build p:UUID="{u()}">\n  <item objectid="{container}" p:UUID="{u()}" '
+        f'transform="{ident}" printable="1"/>\n </build>\n</model>\n')
+
+    mtx = '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
+    over = "".join(f'      <metadata key="{k}" value="{v}"/>\n'
+                   for k, v in overrides.items())
+    parts = (f'    <part id="1" subtype="normal_part">\n'
+             f'      <metadata key="name" value="{name}"/>\n      {mtx}\n    </part>\n')
+    parts += "".join(
+        f'    <part id="{2+i}" subtype="modifier_part">\n'
+        f'      <metadata key="name" value="{mod_name}_{int(a)}"/>\n      {mtx}\n{over}'
+        f'    </part>\n' for i, a in enumerate(STATIONS))
+    cfg = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
+           f'  <object id="{container}">\n'
+           f'    <metadata key="name" value="{name}"/>\n{rows}{parts}'
+           '  </object>\n</config>\n')
+
+    with zipfile.ZipFile(path) as z:
+        keep = {n: z.read(n) for n in z.namelist() if n != MODEL_PATH}
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for n, b in keep.items():
+            z.writestr(n, b)
+        z.writestr(MODEL_PATH, model)
+        z.writestr(SETTINGS_PATH, cfg)
+
+
+def read_3mf_config(path):
+    """The settings actually in a written 3MF -- for checking the file, not the intention."""
+    import zipfile
+    from xml.etree import ElementTree
+    with zipfile.ZipFile(path) as z:
+        if SETTINGS_PATH not in z.namelist():
+            # The likeliest real failure -- geometry written, settings silently absent --
+            # and it must not surface as a bare KeyError from inside zipfile.
+            raise SystemExit(
+                f"\n{path} carries NO print settings.\n"
+                f"  it holds: {z.namelist()}\n"
+                f"  the 3MF was written but {SETTINGS_PATH} was not injected; "
+                f"see write_3mf()")
+        root = ElementTree.fromstring(z.read(SETTINGS_PATH))
+    obj = root.find("object")
+    return {m.get("key"): m.get("value") for m in obj.findall("metadata")
+            if m.get("key") != "name"}
+
+
+def read_3mf_modifiers(path):
+    """Every modifier in a written 3MF, as (name, overrides, bounding box).
+
+    Reads the MESHES back out of the zip rather than trusting the geometry that went in.
+    That distinction is the whole point: a compound of three blocks passed straight into
+    add_shape() produced a file with ONE, and a coverage check run against the input
+    geometry passed it happily. Only the file is evidence.
+    """
+    import re, zipfile
+    from xml.etree import ElementTree
+    with zipfile.ZipFile(path) as z:
+        cfg = ElementTree.fromstring(z.read(SETTINGS_PATH))
+        model = z.read(MODEL_PATH).decode("utf-8")
+    out = []
+    for part in cfg.find("object").findall("part"):
+        if part.get("subtype") != "modifier_part":
+            continue
+        oid = part.get("id")
+        blk = re.search(r'<object\b[^>]*id="' + oid + r'"(?:(?!</object>).)*?</object>',
+                        model, re.S)
+        assert blk, f"{path}: modifier part {oid} has no mesh object"
+        xs, ys, zs = [], [], []
+        for v in re.finditer(r'<vertex x="([-\d.eE]+)" y="([-\d.eE]+)" z="([-\d.eE]+)"',
+                             blk.group(0)):
+            xs.append(float(v.group(1))); ys.append(float(v.group(2)))
+            zs.append(float(v.group(3)))
+        assert xs, f"{path}: modifier part {oid} has an EMPTY mesh"
+        meta = {m.get("key"): m.get("value") for m in part.findall("metadata")}
+        out.append((meta.get("name"),
+                    {k: v for k, v in meta.items() if k not in ("name", "matrix")},
+                    (min(xs), min(ys), min(zs), max(xs), max(ys), max(zs))))
+    return out
 
 
 def purchased(total_cc=None):
@@ -692,10 +964,15 @@ def purchased(total_cc=None):
          "note": "Three press into the tube plate's forward face (captured, for the push "
                  "bolts), three press into the pull knobs. Identical parts -- the pull "
                  "knob is what replaced the wing nut."},
-        {"qty": 3, "item": "#10 flat washer (landing pad)",
-         "spec": f"{WASHER_D / 25.4:g}\" OD, {WASHER_T / 25.4:g}\" thick",
-         "note": "What the push-bolt tips actually bear on. Steel on steel, so no bolt "
-                 "ever embosses the plastic and walks the collimation."},
+        {"qty": 3, "item": "#4 flat washer (landing pad)",
+         "spec": f"{PAD_OD / 25.4:g}\" OD, {PAD_ID / 25.4:g}\" bore, "
+                 f"{PAD_T / 25.4:g}\" thick",
+         "note": "A #4 washer under a #10 bolt, and that is NOT a typo. What the "
+                 "push-bolt tips bear on -- steel on steel, so no bolt ever embosses the "
+                 "plastic and walks the collimation. The bore has to be SMALLER than the "
+                 "bolt's point or the pad does nothing: a #10 washer's 0.2031\" bore is "
+                 "free-fit clearance for a #10 bolt, so the tip drops through it and "
+                 "lands on plastic. The 0.125\" bore here is what the point rests on."},
         {"qty": 3, "item": "Compression spring",
          "spec": f"{SPRING_WIRE_D:g} mm wire x {SPRING_OD:g} mm OD x "
                  f"{SPRING_FREE_L:g} mm free length (~13 lb/in)",
@@ -758,7 +1035,8 @@ def bom(parts, volumes=None):
         # .get, not [], so a part added to PARTS without print settings comes out as an
         # empty row that verify() reports -- rather than a KeyError from a BOM function,
         # which reads like a bug in the BOM instead of an unfinished part.
-        settings, note = PRINT.get(n, ("", ""))
+        spec, note = PRINT.get(n, (None, ""))
+        settings = spec.prose() if spec else ""
         v = (volumes or {}).get(n)
         rows.append({"section": "printed", "qty": qty.get(n, 1), "item": n,
                      "spec": settings + (f", {v / 1000:.2f} cc each" if v else ""),
@@ -833,7 +1111,7 @@ def bom_snapshot_stale(rows, path="BOM.md"):
     import os
     if not os.path.exists(path):
         return [r["item"] for r in rows]
-    lines = open(path).read().splitlines()
+    lines = open(path, encoding="utf-8").read().splitlines()
 
     def current(r):
         head = (f"| {r['qty']} | `{r['item']}` |" if r["section"] == "printed"
@@ -1188,6 +1466,11 @@ def verify():
         "every download names a .step and a .stl")
     chk(all(d["step"] == f"build/{d['name']}.step" for d in printed),
         "printed downloads point at the files the exporter actually writes")
+    # The 3MF is the one the viewer offers for slicing, so the guarantee has to run both
+    # ways: the panel cannot offer a file the exporter skips, and cannot silently omit one
+    # it writes. Coupons carry their own manifest and are checked in test_coupon.py.
+    chk(all(d.get("3mf") == f"build/3mf/{d['name']}.3mf" for d in printed),
+        "printed downloads point at the 3MFs the exporter actually writes")
     chk(all(d["kind"] == "printed" for d in D),
         "every download is a printed part -- no purchased solid is in the design now")
 
@@ -1211,7 +1494,7 @@ def verify():
     # capturing a nut: the drawn count changes and the BOM does not follow.
     buy = {r["item"]: r["qty"] for r in B if r["section"] == "purchased"}
     drawn = {"10-24 hex nut": inst["hex_nut"],
-             "#10 flat washer (landing pad)": inst["washer"],
+             "#4 flat washer (landing pad)": inst["washer"],
              "Compression spring": len(A["springs"]["instances"]),
              "10-24 hex-head MACHINE screw": sum(len(b["angles"]) for b in A["bolts"])}
     chk(all(buy.get(k) == v for k, v in drawn.items()),
@@ -1258,6 +1541,29 @@ def verify():
             chk(clash < 1.0,
                 f"{nm} at {where} seats in its "
                 f"{'/'.join(hosts)} recess (overlap {clash:.2f} mm^3)")
+
+    # --- the landing pads actually stop the push bolts -------------------------
+    # This is the check that was missing, and its absence let a #10 washer sit here for
+    # the whole design: the seating check proved the pad FIT ITS RECESS, which it did,
+    # while the bolt it exists to stop passed clean through its bore. A pad is defined by
+    # what it stops, so that is what is asserted.
+    chk(PAD_ID < BOLT_POINT_D,
+        f"landing pad bore {PAD_ID:.2f} mm is under the bolt point {BOLT_POINT_D:.2f} mm "
+        f"(major {BOLT_MAJOR_D:.2f}), so the tip lands on steel -- a #10 washer's "
+        f"{BOLT_CLEAR_D:.2f} mm bore would not")
+    # ...and the same thing against the solids, which is the version that cannot be
+    # fooled by getting the arithmetic right about the wrong two numbers.
+    # Swept THROUGH the pad's thickness, not parked against its face: the bolt only
+    # touches, so a flush cylinder intersects in zero volume and the check reads 0 mm^2
+    # whatever the geometry does. Dividing the swept volume by PAD_T gives the contact
+    # annulus as an area, which is the number that means something.
+    tip = at(STATIONS[0], R_PUSH, PAD_T / 2) * Cylinder(
+        radius=BOLT_POINT_D / 2, height=PAD_T * 3, align=(Align.CENTER,) * 3)
+    pad = at(STATIONS[0], R_PUSH) * washer()
+    contact = (tip & pad).volume / PAD_T  # mm^2 of face the point actually rests on
+    chk(contact > 1.0,
+        f"push bolt point rests on {contact:.1f} mm^2 of pad (annulus between the "
+        f"{PAD_ID:.2f} mm bore and the {BOLT_POINT_D:.2f} mm point)")
 
     # --- the bolt HEADS, against the pockets that capture them ----------------
     # The other fit that had no solid test. The heads are procedural stand-ins in the
@@ -1377,9 +1683,9 @@ def verify():
     well = hypot(MP_LIGHTEN_RC * cos(radians(30)),
                  MP_LIGHTEN_RC * sin(radians(30)) - R_PULL) - RTV_WELL_D / 2 - MP_LIGHTEN_R
     chk(well >= 5.0, f"lightening hole clears the RTV well by {well:.1f} mm")
-    chk(MP_CENTER_BORE / 2 <= R_PUSH - (WASHER_D / 2 + 0.15) - 3.0,
+    chk(MP_CENTER_BORE / 2 <= R_PUSH - (PAD_OD / 2 + 0.15) - 3.0,
         f"bore clears the landing pad recess by "
-        f"{R_PUSH-(WASHER_D/2+0.15)-MP_CENTER_BORE/2:.1f} mm")
+        f"{R_PUSH-(PAD_OD/2+0.15)-MP_CENTER_BORE/2:.1f} mm")
 
     # --- the corner tabs must still hold the tube screws -----------------------
     # Cutting the flats deeper narrows exactly the tabs the whole cell hangs from. A tab's
@@ -1399,10 +1705,16 @@ def verify():
     # proved the COUPON reproduced the roof, which it would have done just as happily at
     # 1 mm. These three screws carry the entire cell, so the wall they pull against is
     # held to the vendor's own minimum, and it is measured over the seated insert.
+    # This is a GEOMETRY check, and geometry is not material: at 40% gyroid roughly 1.1 mm
+    # of that roof would have been infill. The insert_solid modifiers in the exported 3MF
+    # are what make the assertion mean what it says -- see MODIFIERS.
     roof = (TUBE_PLATE_T - INSERT_OD) / 2
     chk(roof >= INSERT_MIN_WALL,
         f"roof over the seated insert = {roof:.2f} mm, ruthex minimum {INSERT_MIN_WALL:.2f}"
         f" (bore alone would read {(TUBE_PLATE_T - INSERT_BORE_D)/2:.2f} mm and flatter)")
+    chk("tube_plate" in MODIFIERS,
+        "the insert region is forced solid by a modifier, so the wall above is material "
+        "and not 40% gyroid")
 
     # The bore is drawn NOMINAL and shrinks into the vendor's recommended hole -- the same
     # convention as the tube plate OD. Compensating it would print it oversize and the
@@ -1413,6 +1725,55 @@ def verify():
     chk(INSERT_DEPTH > INSERT_L,
         f"bore {INSERT_DEPTH:g} mm is deeper than the {INSERT_L:g} mm insert, so the "
         f"screw tip runs out past it")
+
+    # --- slicer settings are complete, and printable as drawn ------------------
+    # Data only: the written 3MFs are checked after the write, not here, because verify()
+    # runs BEFORE the exporter and --check writes nothing. Asked here, a file check would
+    # be reading the previous run -- the deadlock the BOM snapshot check used to have.
+    missing = [n for n in PARTS if n not in PRINT]
+    chk(not missing, f"every printable part has slicer settings; missing {missing}")
+    for name, (spec, note) in PRINT.items():
+        chk(name in PARTS, f"PRINT names a real part: {name}")
+        chk(bool(note.strip()), f"{name} carries a reason, not just settings")
+        # walls and solid travel together or not at all -- a part with walls but no shell
+        # count would emit wall_loops with no top/bottom and slice to something nobody
+        # chose. (Slice.__init__ guards density and pattern at construction.)
+        chk((spec.walls is None) == (spec.solid is None),
+            f"{name}: walls and solid layers are both set or both unset "
+            f"({spec.walls}, {spec.solid})")
+        # Shells are counted in LAYERS, so they buy a thickness only at LAYER_H. If top and
+        # bottom together exceeded the part, it would print solid whatever the density says
+        # and the infill setting would be a fiction. Bounding-box height is generous -- a
+        # part can be thinner than its bbox in places -- so this is a floor, not a proof.
+        if spec.solid is not None:
+            h = PARTS[name]().bounding_box().size.Z
+            chk(2 * spec.solid * LAYER_H < h,
+                f"{name}: {spec.solid}+{spec.solid} shell layers = "
+                f"{2*spec.solid*LAYER_H:.1f} mm at {LAYER_H} mm, inside its {h:.1f} mm")
+
+    # Modifiers exist to make a region SOLID. Asserted as that, not as "matches
+    # MODIFIERS" -- the round-trip check compares the file against this table, so it
+    # cannot notice the table itself being wrong, and a modifier at anything under 100%
+    # is decoration that still costs print time.
+    for host, (make, mod_name, overrides) in MODIFIERS.items():
+        chk(host in PARTS, f"MODIFIERS names a real part: {host}")
+        chk(overrides.get("sparse_infill_density") == "100%",
+            f"{host} modifier '{mod_name}' fills its region solid "
+            f"({overrides.get('sparse_infill_density')}) -- anything less does not give "
+            f"the insert the material ruthex's minimum wall assumes")
+        solids = make()
+        chk(len(solids) == len(STATIONS),
+            f"{host}: {len(solids)} modifier solids for {len(STATIONS)} stations")
+        chk(all(s.volume > 0 for s in solids),
+            f"{host}: every modifier solid has volume")
+
+    # Exports must land on the bed ready to slice. True today only because of how each
+    # part happens to be drawn, which is exactly the kind of thing that quietly stops
+    # being true: a part sunk below z=0 or floating above it loads into the slicer in a
+    # pose nobody intended, and the settings riding with it would be beside the point.
+    for name, fn in PARTS.items():
+        z0 = fn().bounding_box().min.Z
+        chk(abs(z0) < 1e-6, f"{name} rests on the bed (z_min = {z0:+.3f} mm)")
 
     # --- everything fits the printer ------------------------------------------
     for name, fn in PARTS.items():
@@ -1443,6 +1804,8 @@ if __name__ == "__main__":
         if not check_only:
             export_step(part, f"build/{name}.step")
             export_stl(part, f"build/{name}.stl")
+            write_3mf(part, Path(f"build/3mf/{name}.3mf"), PRINT[name][0],
+                      part_number=name)
         vols[name] = part.volume
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
@@ -1474,16 +1837,72 @@ if __name__ == "__main__":
                 f"  fix: rerun `python3 mirror_cell.py` and commit BOM.md")
         print("\n--check: all checks passed and BOM.md is current; nothing written")
     else:
-        with open("build/assembly.json", "w") as f:
+        with open("build/assembly.json", "w", encoding="utf-8") as f:
             json.dump(A, f, indent=1)
-        with open("build/bom.md", "w") as f:
+        with open("build/bom.md", "w", encoding="utf-8") as f:
             f.write(md)
-        with open("build/bom.csv", "w") as f:
+        with open("build/bom.csv", "w", encoding="utf-8") as f:
             f.write(bom_csv(rows))
         # ...and a snapshot at the top level, which is the one that gets committed:
         # build/ is gitignored, so without this the repo has no readable buy list at all.
-        with open("BOM.md", "w") as f:
+        with open("BOM.md", "w", encoding="utf-8") as f:
             f.write(md)
+        # Round-trip the 3MFs: reopen what was actually written and compare it to what the
+        # model meant. verify() checked the DATA; this checks the ARTIFACT, which is the
+        # only thing that catches an injection that silently did not happen -- seven files
+        # with no settings in them look exactly like seven correct ones from the outside.
+        for name in PARTS:
+            p = Path(f"build/3mf/{name}.3mf")
+            want = PRINT[name][0].config()
+            got = read_3mf_config(p)
+            if got != want:
+                raise SystemExit(
+                    f"\n3MF SETTINGS DID NOT ROUND-TRIP for {name}\n"
+                    f"  wrote:  {got}\n  meant:  {want}")
+
+            found = read_3mf_modifiers(p)
+            if name not in MODIFIERS:
+                if found:
+                    raise SystemExit(f"\n{p} has {len(found)} unexpected modifier(s)")
+                continue
+            _, _, overrides = MODIFIERS[name]
+            if len(found) != len(STATIONS):
+                raise SystemExit(
+                    f"\n{p} carries {len(found)} modifier meshes, expected "
+                    f"{len(STATIONS)} -- one per station.\n"
+                    f"  found: {[f[0] for f in found]}")
+            # One modifier centred on each station's bore, spanning the plate, and big
+            # enough to hold the cylinder ruthex's minimum wall describes. Written from
+            # the insert constants rather than from insert_bosses(), so it is not the
+            # generator checking its own homework -- and it reads the MESHES, so a mesh
+            # that never reached the file fails here however good the source geometry was.
+            rr = INSERT_OD / 2 + INSERT_MIN_WALL
+            reach = TP_ARC_R - INSERT_DEPTH / 2
+            for a in STATIONS:
+                cx, cy = reach * cos(radians(a)), reach * sin(radians(a))
+                near = [b for _, _, b in found
+                        if hypot((b[0] + b[3]) / 2 - cx, (b[1] + b[4]) / 2 - cy) < 1.0]
+                if not near:
+                    raise SystemExit(
+                        f"\n{p}: no modifier centred on the insert at {a:.0f} deg "
+                        f"(expected near x={cx:.1f} y={cy:.1f})\n"
+                        f"  boxes in the file: {[f[2] for f in found]}")
+                b = near[0]
+                if not (b[2] <= 1e-6 and b[5] >= TUBE_PLATE_T - 1e-6):
+                    raise SystemExit(f"\n{p}: modifier at {a:.0f} deg spans z "
+                                     f"{b[2]:.2f}..{b[5]:.2f}, not the full plate")
+                if min(b[3] - b[0], b[4] - b[1]) < 2 * rr - 1e-6:
+                    raise SystemExit(
+                        f"\n{p}: modifier at {a:.0f} deg is {b[3]-b[0]:.1f} x "
+                        f"{b[4]-b[1]:.1f} mm, too small for the {2*rr:.1f} mm "
+                        f"solid region ruthex's minimum wall needs")
+            for nm, ov, _ in found:
+                if ov != overrides:
+                    raise SystemExit(f"\n{p}: modifier {nm} carries {ov}, "
+                                     f"expected {overrides}")
+        print(f"build/3mf/ written; {len(PARTS)} parts, settings and "
+              f"{len(STATIONS)} modifiers verified in the files")
+
         print(f"\nbuild/assembly.json written; build/bom.md, build/bom.csv and the "
               f"committed BOM.md ({len(rows)} lines)")
         # Reported AFTER the write, so this is news rather than an obstacle: the file has

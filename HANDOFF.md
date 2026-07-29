@@ -8,7 +8,7 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **121 assertions pass.** Nothing has been
+Design is complete and internally consistent. **153 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
@@ -39,7 +39,7 @@ the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over
 button in the viewer — is written by `bom()` from the model's own numbers, with a line of
 reasoning on every row. Take that to the shop rather than the summary below, which is here
 only so this page reads as a whole: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
-6 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
+6 × 10-24 hex nuts · 3 × **#4** washers (landing pads — see traps) · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
 ≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
 3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
 
@@ -96,9 +96,40 @@ face, which was hiding 2.5 mm of its length in the viewer.
 
 ## Suggested slicer settings
 
-These now live in `PRINT` in `mirror_cell.py` and come out in `build/bom.md` next to the
-part they belong to — this table is the same data, kept here because it is what you scan
-before a print. **Change `PRINT`, not this table.**
+These live in `PRINT` in `mirror_cell.py` as **values, not prose** — the sentence in the
+BOM is generated from them — and they are also written into the parts themselves:
+`build/3mf/<part>.3mf` carries walls, top/bottom shells, infill density and pattern, so
+opening one in AnycubicSlicerNext or OrcaSlicer needs no dialling in. This table is the
+same data, kept here because it is what you scan before a print. **Change `PRINT`, not
+this table.**
+
+**Select your own process preset first, at 0.2 mm layers, then open the 3MF.** The
+settings are **per-object overrides** (`Metadata/model_settings.config` in the zip), an
+Orca/Bambu-family convention and *not* part of the 3MF standard — the core spec has no
+notion of a perimeter count, so these open as plain geometry in Cura and other slicers.
+Overrides overlay the selected preset, so your speeds, accelerations and temperatures are
+untouched and they survive switching presets. Only the part-specific keys are in the file;
+the machine settings below are ranges, so they stay prose here and are dialled in by hand.
+
+**`tube_plate.3mf` also carries three modifier blocks**, one per heat-set insert, forcing
+100% infill around each bore. Without them the 2.80 mm roof the minimum-wall assertion
+checks is only about 2 mm of solid with ~1.1 mm of 40% gyroid in between — and heat-set
+inserts want material to displace into, not voids. Raising infill globally is not the
+alternative (it warps the plate) and extra walls never reach the roof above a void, so
+local density is the only lever. The blocks are drawn off the same expression that cuts
+the bore. **Watch for this failure mode:** `Mesher.add_shape()` on a compound of disjoint
+solids silently writes only the *first*, which shipped a plate with one insert reinforced
+out of three and looked correct everywhere except the slice preview. Each modifier is now
+its own mesh object, and `verify()` reads the meshes back out of the zip rather than
+trusting the geometry that went in.
+
+**This was `project_settings.config` for one afternoon and it was a trap.** A project
+config *replaces* the process profile: the five keys applied and the other ~275 fell back
+to `fdm_process_common`, taking inner wall speed from 180 to 80 and acceleration from 4000
+to 1000. The tube plate estimated **11 h instead of 7**, and time was the least of it —
+seam, brim and overhang handling had reverted too, so it was a different print, not a slow
+one. Nothing in the file looked wrong; the only symptom was the estimate. Layer height is
+absent for a related reason: it has no per-object form, so the preset must supply it.
 
 0.4 mm nozzle, 0.2 mm layers, both plates **rear-face-down, posts up, no supports needed**.
 
@@ -118,6 +149,11 @@ and the landing-pad recess ceilings are bridged.
 
 ## Traps — things that look wrong but are deliberate
 
+- **The landing pads are #4 washers under #10 bolts.** Not a typo, and not an upsizing
+  opportunity. A #10 washer's bore *is* clearance for a #10 bolt, so the push-bolt tip
+  drops through it onto plastic and the pad does nothing — that was the real state of
+  this design until 2026-07-29. A #6 washer leaves 0.9 mm² of contact and `verify()`
+  rejects it; the #4 leaves 5.3 mm².
 - **Clips are separate parts.** Integral, they leave a 142.4 mm opening for a 152.4 mm
   mirror — the mirror could never be installed. Do not "simplify" them back onto the posts.
 - **Captured nut pockets open FORWARD**, into the gap between the plates. A push bolt's

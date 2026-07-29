@@ -7,7 +7,7 @@ profile rather than the geometry, and a pocket that is 0.15 mm tight cracks a pl
 spent three and a half hours printing.
 
 ```sh
-python3 test_coupon.py     # 25 checks, then build/coupon_fit.* and build/coupon_insert.*
+python3 test_coupon.py     # 28 checks, then build/coupon_fit.* and build/coupon_insert.*
 ```
 
 It also writes `build/coupons.json`, which puts both coupons in the viewer's
@@ -26,7 +26,7 @@ parts it stands in for.
 | Six 10-24 **nut** pockets, row `N` | top face, fits 0.10 → 0.40 | `FIT` for the captured push-bolt nut (tube plate) |
 | Six 10-24 **head** pockets, row `H` | top face, same ladder | `FIT` for the captured pull-bolt head (mirror plate) *and* the push knob |
 | Ø12.0 × 1.5 counterbore | bottom left | printed cap disc into printed bore |
-| Two Ø13.0 / Ø13.3 pad recesses | **bed face** | the #10 washer landing pad |
+| Two Ø8.24 / Ø8.54 pad recesses | **bed face** | the #4 washer landing pad |
 | Ø9.8 × 2.5 seat | bottom right | the spring drops in and does not bind |
 | Ø5.16 through hole | far right | the push bolt slides freely |
 | The outline itself | — | **shrink gauge**: drawn at exactly 100.000 × 50.000 |
@@ -57,7 +57,10 @@ In particular, whatever XY hole compensation / horizontal expansion is in the pr
 must be identical in both — if you change it later, the coupon is void.
 
 - 0.4 mm nozzle, 0.2 mm layers, **flat on the bed**, no supports needed by either part
-- Walls **5**, top/bottom **5**, 40 % gyroid — matching the tube plate
+- Walls **5**, top/bottom **5**, 40 % gyroid — matching the tube plate. This is no longer
+  a claim you have to keep true by hand: `COUPON_SLICE` in `test_coupon.py` *is*
+  `PRINT["tube_plate"]`, an assertion pins it, and `build/3mf/coupon_*.3mf` carries these
+  settings into the slicer for you
 - ABS 250–255 °C, bed 100–110 °C, **enclosure closed, cooling 0–20 %**, 8–10 mm brim
 - Do **not** scale the model, and do not let the slicer "fix" the 100.000 mm outline
 
@@ -95,8 +98,8 @@ question is functional.
    because their pockets are not in a plate.
 5. **Cap counterbore.** A printed `pocket_cap` must drop in with obvious slack. It is
    bedded in RTV and is *supposed* to be loose — if it is a nice fit, that is a defect.
-6. **Landing pads (bed face).** A #10 washer should drop into the Ø13.0 recess and sit
-   flush or slightly proud, never rock. If only the Ø13.3 one takes it, the first-layer
+6. **Landing pads (bed face).** A **#4** washer should drop into the Ø8.24 recess and sit
+   flush or slightly proud, never rock. If only the Ø8.54 one takes it, the first-layer
    squish is eating the recess: either dial the elephant-foot compensation or open
    `mirror_plate()`'s `+ 0.15` to what worked.
 7. **Spring seat and clearance hole.** Spring drops in, bolt slides freely through the

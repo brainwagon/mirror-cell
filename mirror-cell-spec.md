@@ -118,10 +118,11 @@ tops do, because tilt trades `r·cosθ` against `h·sinθ`.
 
 - Pull-bolt **hex pockets at r = 2.250", opening forward, capped** (see below).
 - **RTV wells** (22 mm dia) around each pocket to meter glue volume.
-- **Landing-pad recesses** for #10 washers on the rear face at r = 1.500".
+- **Landing-pad recesses** for **#4** washers on the rear face at r = 1.500". A #4 under a
+  #10 bolt — see §7, the bore is the point.
 - Centre bore **56 mm** — its *own* parameter, not the tube plate's. The tube plate's bore
   is set by the 40 mm fan screw circle; this one is limited by the landing pads (recess
-  inner edge at 31.6 mm) and wants to be as open as possible so fan air actually reaches
+  inner edge at 34.0 mm) and wants to be as open as possible so fan air actually reaches
   the back of the glass. Coupling the two would tie together constraints that have nothing
   to do with each other.
 - Three **lightening holes** (r = 12.5 mm) at the mid-angles, between Stations.
@@ -230,6 +231,25 @@ incidental; ABS creeps under sustained tension, and a cell that creeps loses col
 slowly, invisibly, over weeks. The Landing pads exist for the same reason: a bolt tip
 bearing directly on ABS would emboss a dimple and walk the collimation.
 
+**The pads are #4 washers, and that is the whole design of them.** They were #10 washers
+for most of this project's life, which is the obvious choice and a useless one: a #10
+washer's 0.2031" bore *is* free-fit clearance for a #10 bolt, so the push-bolt tip passed
+through it with 0.166 mm to spare and landed on the plastic floor of the recess. The pad
+sat there doing nothing while the bolt bore on ABS over 18 mm² — a *smaller* area than
+the flat plate would have given it, so the recess actively made the thing it was meant to
+prevent worse. A pad is defined by what it stops, and its bore must be **smaller than the
+bolt's point**, not sized to the bolt.
+
+The margin is thinner than it looks, because a machine screw's end is chamfered: taking a
+conservative 0.85 × major diameter, the point is 4.10 mm, and the #4's 0.125" bore leaves
+a **5.3 mm² contact annulus**. A #6 washer — the other obvious candidate, 0.156" bore —
+leaves **0.9 mm²**, a 0.07 mm wide ring that is knife-edge contact on the bore rim, and
+`verify()` rejects it. Do not "upsize" these pads.
+
+Nothing caught this for the whole project because the only assertion touching the pads
+proved that a pad *fits its recess*, which it always did. Two checks now assert what a pad
+is for: the bore against the bolt point, and the contact annulus against the solids.
+
 ## 7. Hardware
 
 This table is the *reasoning*; the shopping list is generated. `bom()` in `mirror_cell.py`
@@ -241,7 +261,7 @@ to the geometry — it buys exactly the nuts, washers, springs and screws the mo
 |---|---|
 | 6 | 10-24 **hex-head machine screws**, **all 1½"** — one type *and* one length throughout, and a ½" multiple |
 | 6 | 10-24 hex nuts — three captured in the Tube plate, three in the Pull knobs |
-| 3 | #10 flat washers, 0.5" OD (Landing pads) |
+| 3 | **#4** flat washers, 0.3125" OD × 0.125" bore (Landing pads) — a #4 under a #10 bolt |
 | 3 | Compression springs — **0.9 mm wire × 9 mm OD × 20 mm free length, ≈ 13 lb/in** |
 | 3 | #10 screws + **1" fender washers** (tube mount) |
 | 3 | 10-24 heat-set inserts, 6.5 mm bore (tube mount) |
