@@ -343,7 +343,10 @@ bolt tilts by the same angle whichever way the plate leans — the limit does no
 tilt direction. Nominal assembly sits at the centre of the cone. This is ample: one full
 turn of a Pull knob is 42 arcmin, so two turns spans everything, and real collimation is
 arcminutes. **The hole binds before the spring does** — the spring allows 3.76 mm at a
-Station (2.51°) and the hole stops you at 2.12 mm. §11 records that as a decision.
+Station (2.51°) and the hole stops you at 2.12 mm. That ordering is the safe one and is
+asserted: jamming a bolt is a hard stop and harmless, while a slack spring at full tilt
+costs the Mirror plate its seat. It is the same argument as `thread_range < spring_range`.
+§11 records the whole bracket as a decision.
 
 > **The lateral freedom of the Mirror plate is load-bearing, and it does not look it.**
 > Over 1.42° a Pull bolt anchored at the Mirror plate swings **0.52 mm** sideways at the
@@ -459,8 +462,12 @@ over the 0.125" first proposed.
   it is the *tightest* limit in the adjustment chain — the spring would allow 2.51°.
   **Tripwires:** a thicker Tube plate, a deeper spring seat (which shortens the guide and
   would *increase* range while costing preload), or any tightening of `BOLT_CLEAR_D` moves
-  it directly. It is not asserted anywhere; `TILT_MAX = 3.0` in `verify()` is only a
-  conservative envelope for the tube-wall swing check and is not derived from this.
+  it directly — and all three are now checked. `pull_bolt_tilt()` computes the budget as
+  printed, and `verify()` brackets it: at least `TILT_NEEDED` (0.5°, the range the cell must
+  *provide*), under `TILT_MAX` (3°, the envelope the tube-wall swing check assumes), and
+  below the angle at which the spring goes slack. `TILT_MAX` stays a fixed 3° and is
+  deliberately **not** derived from the holes, so that a change opening the range up fails
+  the check instead of quietly widening the envelope with it.
 - **The Mirror plate is laterally unregistered, and the tilt range depends on it** (§7).
   Tilting needs ~0.26 mm of sideways plate movement, because a Pull bolt swings 0.52 mm at
   the Tube plate against 0.15 mm of slop per side. **Tripwire:** any pilot, boss, or

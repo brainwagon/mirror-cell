@@ -24,7 +24,7 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 163 assertions, then writes `build/*.step`, `build/*.stl`, `build/3mf/*.3mf`
+Runs 166 assertions, then writes `build/*.step`, `build/*.stl`, `build/3mf/*.3mf`
 (geometry **and** that part's slicer settings), `build/assembly.json`
 and the bill of materials — `build/bom.md`, `build/bom.csv`, and the committed snapshot
 `BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries). If a

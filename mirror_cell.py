@@ -10,7 +10,7 @@ dimensioned in inches, so inch() converts at the boundary.
     python3 mirror_cell.py          # writes STEP + STL for every part into build/
 """
 
-from math import sqrt, cos, sin, radians, degrees, hypot, atan2, pi
+from math import sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2, pi
 from pathlib import Path
 from build123d import *
 
@@ -111,6 +111,14 @@ BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24
 # against 2.51 deg the spring would allow. Ample: one knob turn is 42 arcmin. Derivation,
 # the as-drawn figures, and the tripwires are in spec section 7; TILT_MAX in verify() is a
 # separate and deliberately conservative envelope, not this number.
+#
+# The range the cell must PROVIDE, as against the range it happens to have. Half-angle,
+# and a REQUIREMENT rather than a measurement -- so it is typed here and the geometry is
+# checked against it, which is the only way round that can fail usefully. 0.5 deg is 30
+# arcmin: enough to absorb a tube drilled a couple of millimetres out of square over the
+# 85.7 mm station lever and still leave most of the range in hand, where collimation itself
+# needs arcminutes. Raise it and verify() says whether the holes still oblige.
+TILT_NEEDED = 0.5
 NUT_AF = inch(0.375)  # 10-24 hex nut across flats
 NUT_T = inch(0.130)
 HEAD_AF = inch(0.3125)  # 10-24 hex head across flats
@@ -457,6 +465,35 @@ def hex_nut():
     n = extrude(RegularPolygon(radius=NUT_AF / sqrt(3.0), side_count=6), NUT_T)
     n -= extrude(Circle(inch(0.190) / 2), NUT_T)
     return n
+
+
+def pull_bolt_tilt(as_printed=True):
+    """Half-angle in degrees that a pull bolt can lean in its tube-plate hole.
+
+    This IS the cell's collimation range -- see BOLT_CLEAR_D. The pull bolt is the one that
+    leans: spring tension clamps its head flat on the mirror plate's floor, so the whole
+    mirror tilt appears as bolt tilt here. The push bolt's nut is captured in the tube
+    plate, so it stays normal to it and never tilts in a hole at all.
+
+    A cylinder of diameter d leaning by t inside a hole of length L needs
+    `d/cos t + L*tan t` of width, assuming it is free to centre itself -- which it is only
+    because nothing registers the mirror plate laterally (spec section 11). Solved for t
+    at the hole's width, by bisection because it does not inverse in closed form.
+
+    Defaults to AS PRINTED. Holes here are drawn nominal like every other dimension, so
+    the hole a bolt actually leans in is ~0.8% smaller than the one drawn, and it is the
+    printed one that has to do the job.
+    """
+    d = BOLT_MAJOR_D
+    D = BOLT_CLEAR_D * (1 - PRINT_SHRINK) if as_printed else BOLT_CLEAR_D
+    L = TUBE_PLATE_T - SPRING_SEAT_DEPTH   # the seat is a Oe9.8 counterbore; it guides nothing
+    if D <= d:
+        return 0.0
+    lo, hi = 0.0, radians(45.0)
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if d / cos(mid) + L * tan(mid) < D else (lo, mid)
+    return degrees(lo)
 
 
 def hex_head():
@@ -1672,6 +1709,32 @@ def verify():
     chk(worst[0] < TUBE_ID / 2 - 3.0,
         f"at {TILT_MAX:.0f} deg tilt the {worst[1]} swings to r={worst[0]:.2f}, "
         f"clearing the tube wall by {TUBE_ID/2 - worst[0]:.2f} mm")
+
+    # --- and the mechanism's actual tilt budget, against both ends of its bracket
+    # Three separate statements, because they fail for three different reasons.
+    budget = pull_bolt_tilt()                       # as printed; the range there really is
+    lever = 1.5 * R_PULL   # one station against the line joining the other two
+    chk(budget >= TILT_NEEDED,
+        f"pull-bolt holes give +/-{budget:.2f} deg ({budget*60:.0f} arcmin, "
+        f"+/-{lever*tan(radians(budget)):.2f} mm at a station) against the "
+        f"{TILT_NEEDED:.2f} deg the cell must provide")
+
+    # The envelope above must stay PESSIMISTIC. It is a fixed 3 deg on purpose, so this is
+    # the check that notices if the mechanism ever grows past it -- a thinner tube plate or
+    # a looser clearance hole would do it -- and it fails rather than quietly widening the
+    # swing check along with it.
+    chk(budget < TILT_MAX,
+        f"the {budget:.2f} deg the holes allow stays inside the {TILT_MAX:.0f} deg "
+        f"envelope the tube-wall check assumes")
+
+    # The hole must bind BEFORE the spring goes slack, the same ordering argument as
+    # thread_range < spring_range above: jamming a bolt is a hard stop and harmless, while
+    # a slack spring at full tilt costs the mirror plate its seat. spring_range is the
+    # axial travel one station has, computed with the preload figures further up.
+    spring_tilt = degrees(atan(spring_range / lever))
+    chk(budget < spring_tilt,
+        f"the holes bind at {budget:.2f} deg, before the spring goes slack at "
+        f"{spring_tilt:.2f} deg -- the stop is a jammed bolt, not a lost seat")
 
     # --- NOTHING may occupy the mirror's volume (spec §8) ----------------------
     # Stated as a solid-vs-solid test rather than as dimensions: it covers the posts, the

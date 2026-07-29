@@ -8,7 +8,7 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **163 assertions pass.** Nothing has been
+Design is complete and internally consistent. **166 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
@@ -163,8 +163,12 @@ and the landing-pad recess ceilings are bridged.
   between the two plates — which reads as an obvious improvement — collapses the range,
   and **no assertion would catch it**. Spec §7 and §11 carry the numbers.
 - **`TILT_MAX = 3.0` is not the mechanism's range.** It is a conservative envelope for the
-  tube-wall swing check. The real limit is ±1.42° as printed, set by `BOLT_CLEAR_D`. The
-  two are deliberately not wired together — see the comments on both.
+  tube-wall swing check. The real limit is ±1.42° as printed, computed by
+  `pull_bolt_tilt()` from `BOLT_CLEAR_D`. The two are deliberately not wired together —
+  `verify()` asserts the budget stays *inside* the envelope rather than deriving one from
+  the other, so a change that opens the range up fails instead of widening the swing check
+  along with it. Three checks bracket it: `>= TILT_NEEDED`, `< TILT_MAX`, and below the
+  angle where the spring goes slack.
 - **Captured nut pockets open FORWARD**, into the gap between the plates. A push bolt's
   reaction drives its nut rearward into solid plastic. Every steel-to-plastic interface in
   this design is in compression, because ABS creeps under sustained tension.
