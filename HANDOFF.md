@@ -53,16 +53,24 @@ all three acceptance criteria. The gauge outline measured 3.91″ × 1.95″ aga
 model now carries `FIT_PRESS = 0.10` (captured nuts and both knobs) and `FIT_SLIP = 0.20`
 (pull-bolt head), passed explicitly at every `hex_prism()` call site.
 
-**The tube plate is printable now.** Its only hex pocket is the nut pocket, and that
-number is measured. Read the two bores on `coupon_insert` first, though — the 10-24 one
-is horizontal with 3.1 mm of roof over it, and the tube screws are what hold the cell in
-the telescope.
+**The tube plate is printable, and now fully cleared to print.** Its only hex pocket is the
+nut pocket, and that number is measured. **`coupon_insert` was printed and read on
+2026-07-29 and passed** — both 10-24 inserts seated, the 3.05 mm roof held, the M3 bores in
+the rib held. `INSERT_BORE_D = 6.5` stands as drawn; the 6.6 rung was not needed, which is
+the good outcome, since 6.6 prints 0.147 mm off ruthex's recommended hole and fails the bore
+assertion. That was also the first print carrying the `insert_solid` modifiers, so the
+reinforcement scheme is confirmed in practice and not only in the file.
+
+One thing deliberately left: **the coupon was not sectioned.** Breaking a bore open is the
+only way to confirm the 100 % region really materialised around it rather than leaving
+gyroid against the insert — which is what the minimum-wall assertion assumes. Cheap, and
+worth doing before the 3½ hour plate rather than after.
 
 **The mirror plate is not.** `FIT_SLIP` is predicted from the measured shrink, not
 measured: no 10-24 hex bolt was on hand. One bolt in row H of the coupon settles it, and
 six are on the buy list anyway. Full working in [TEST-COUPON.md](./TEST-COUPON.md), which
 also has the slicer settings and what is still unread on the coupon (cap disc, landing
-pads, spring seat, both insert bores).
+pads, spring seat).
 
 Everything else that could have needed dialling in was deliberately engineered out — the
 pocket caps became a loose fit bedded in RTV precisely for this reason.
@@ -213,9 +221,10 @@ everything in the first group below resolves with the coupon in hand plus one bo
 - **`FIT_SLIP`** — predicted, not measured. Blocks the mirror plate only. Row H, one
   10-24 hex bolt.
 - **The press fit in a 2.2 mm knob wall** — see above. Blocks the knobs only.
-- **`coupon_insert` has never been read.** Both heat-set bores are unmeasured and the
-  10-24 one is horizontal with 3.1 mm of roof. Those three screws carry the whole cell.
-  Do this *before* the tube plate goes on the bed — it is the 3½ hour print.
+- **`coupon_insert` has not been sectioned.** The bores themselves passed (2026-07-29, see
+  above), but nothing has confirmed the `insert_solid` modifier produced solid material
+  around the bore in the plastic rather than only in the file. Snap one bore open and look.
+  Worth doing *before* the tube plate goes on the bed — it is the 3½ hour print.
 
 **Closed or downgraded:**
 

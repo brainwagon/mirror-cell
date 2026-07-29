@@ -113,11 +113,37 @@ question is functional.
    Ø5.16 hole with no thread drag. Both should pass without drama; if they do not, the
    profile is over-extruding and everything above is suspect.
 8. **Insert coupon.** Install a 10-24 insert in each horizontal bore with a soldering
-   iron at 230–250 °C, going in slowly and square. Watch the 3.1 mm roof: if it bulges
-   or splits, that is the tube plate's tube screw failing in miniature. Then run a bolt
-   in and pull on it. Same for M3 in the rib. Keep the bore that goes in square and
+   iron at 230–250 °C, going in slowly and square. Keep the bore that goes in square and
    holds; the difference between them is only 0.1 mm and heat-set inserts are forgiving,
-   so if both work, take the smaller.
+   so if both work, **take the smaller** — 6.5 prints at 6.448 mm against ruthex's 6.4 mm
+   recommendation, while 6.6 prints at 6.547 and *fails* the bore assertion in `verify()`.
+   Then, in order:
+   - **Flush at the mouth, never proud.** The bore mouth is on the plate's arc at
+     r = 95.25 mm, which *is* `TUBE_ID/2` — no relief, no countersink. An insert standing
+     proud holds the whole plate off the tube wall, and you would discover it while
+     drilling in situ with the plate already in the tube. Straightedge or caliper depth
+     blade. (The coupon's rim is flat; the plate's is convex with a 0.20 mm crown across
+     the boss, so on the real part reference the arc, not a straightedge over the boss.)
+   - **Caliper the roof, don't just look at it.** 2.80 mm over the seated insert against a
+     2.6 mm minimum — 0.2 mm of margin. Measure the block over each bore and again 10 mm
+     away; any difference is the roof lifting. Look for whitening or a split line along
+     the crown, which ABS shows before it fails.
+   - **Load it by tightening, not by pulling.** The cell is 3.0 lb, so each insert carries
+     1.0 lb static and ~10 lb under the 10 g transport knock of §7 — and that arrives as
+     *shear*, since the screws are radial while the weight acts along or across the tube.
+     Tension is self-inflicted: a hand driver puts 50+ lb of preload on a 10-24 screw,
+     five times the worst transport load, so **stripping it during assembly is the real
+     failure mode**. Put a screw through a 1″ fender washer, tighten against the rim face
+     as if it were the tube wall to the torque you will actually use, and watch for the
+     insert turning. Back it off and re-check flushness: one that migrated 0.1 mm is
+     telling you something.
+   - **Then break it open.** The coupon is expendable and this is the only way to see
+     whether the 100 % modifier region really materialised around the bore. Snap or cut
+     through one bore: gyroid touching the insert means the modifier did not apply, and
+     the minimum-wall assertion is measuring material that is not there.
+
+   Same sequence for M3 in the rib — 1.95 mm of wall each side, as in a real post, so a
+   bulge there is a bulge in a centering post.
 
 ## Feeding the answer back
 
@@ -178,9 +204,33 @@ about 2° of rotational slop, which the pull knob takes out anyway. **Confirm it
 before printing the mirror plate** — one 10-24 hex bolt settles it, and six of them are
 on the buy list regardless.
 
-Still unread on this coupon: cap disc, landing pads, spring seat, clearance hole, and
-both bores on `coupon_insert`. The insert bores are worth doing before the tube plate
-goes on the bed, since the tube screws are what hold the cell in the telescope.
+Still unread on this coupon: cap disc, landing pads, spring seat, clearance hole.
+
+## Results — 2026-07-29, insert coupon
+
+**Printed and both 10-24 inserts installed. Everything checked passed.** That clears the
+last geometric unknown in front of the tube plate: the bore diameter is right, the roof
+holds a seated insert, and `INSERT_BORE_D = 6.5` stands as drawn — the 6.6 rung was not
+needed, which is the good outcome, since 6.6 would have failed the bore assertion.
+
+This was the first print of the coupon **with the `insert_solid` modifiers**, so it is also
+the first evidence that the reinforcement scheme works in practice and not just in the
+file. The bores were printed in their real orientation — axis parallel to the layers,
+unsupported round hole, 3.05 mm of roof — which is the condition the tube plate will be in.
+
+| | Result |
+|---|---|
+| Ø6.5 bore | insert seated, **kept** — `INSERT_BORE_D` unchanged |
+| Ø6.6 bore | also seated; not needed, and out of tolerance against ruthex's 6.4 mm |
+| Roof over the bore | held |
+| M3 bores in the rib | held |
+
+**Not done: sectioning the coupon.** Breaking a bore open is the only way to confirm the
+100 % modifier region actually materialised around it rather than leaving gyroid against
+the insert, and the minimum-wall assertion assumes it did. The coupon is expendable and the
+inserts are cheap; worth doing before the tube plate rather than after. Until then, treat
+the modifier as verified *in the file* (`verify()` reads the meshes back out of the zip)
+but not verified *in the plastic*.
 
 **What this coupon does not test.** Every pocket here sits in a 6 mm plate with material
 all around it. Both knobs put the same pocket inside a **2.2 mm wall**

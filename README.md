@@ -113,11 +113,17 @@ JavaScript, so the picture cannot drift away from the parts.
 
 ## Status
 
-No cell part has been printed yet, but **the fit coupon has** (2026-07-28): 0.7–0.9 %
-measured shrink, and the captured nut lands on the 0.10 rung, so `FIT_PRESS = 0.10`.
-That unblocks the tube plate. The mirror plate still waits on `FIT_SLIP = 0.20`, which is
-predicted from the shrink rather than measured — one 10-24 hex bolt in row H of the
-coupon settles it. See [TEST-COUPON.md](./TEST-COUPON.md).
+No cell part has been printed yet, but **both coupons have.** The fit coupon (2026-07-28)
+gave 0.7–0.9 % measured shrink and put the captured nut on the 0.10 rung, so
+`FIT_PRESS = 0.10`. The insert coupon (2026-07-29) passed on both 10-24 bores, the 3.05 mm
+roof and the M3 bores in the rib, with the `insert_solid` modifiers in place —
+`INSERT_BORE_D = 6.5` stands as drawn. **The tube plate is cleared to print.**
+
+The mirror plate still waits on `FIT_SLIP = 0.20`, which is predicted from the shrink
+rather than measured — one 10-24 hex bolt in row H of the coupon settles it. And the insert
+coupon has not been *sectioned*, which is the only way to confirm the modifier put solid
+material around the bore in the plastic rather than only in the file. See
+[TEST-COUPON.md](./TEST-COUPON.md).
 
 The rear end was reworked afterwards ([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)):
 both controls are printed knobs that clear each other radially, the wing nut is gone, and
