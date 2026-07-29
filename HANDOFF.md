@@ -8,7 +8,7 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **153 assertions pass.** Nothing has been
+Design is complete and internally consistent. **163 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
@@ -260,3 +260,23 @@ minus the deadlock.
 The strongest checks are the ones that test **solids against solids** (does this part fit
 in that recess; is the mirror's volume clear) rather than comparing numbers that were
 typed in. Prefer those.
+
+**2026-07-29 — the clearest demonstration yet of why.** `insert_coupon()` aimed both
+radial bore cuts *outward* from the rim. They removed nothing, and the coupon shipped with
+no 10-24 bores at all — its only holes were the two vertical M3 ones. All five insert
+checks passed, because all five were arithmetic on constants: roof depth, bore spacing,
+bore depth against the block. Every one of those numbers was correct. Nothing asked the
+solid whether the hole was there. It is now asked directly — each intended bore is
+intersected with the coupon and must come back empty, and must break the rim face — and
+both were confirmed by restoring the old direction and watching four checks fail. If the
+coupon had been printed first, the print would have looked fine and taught nothing.
+
+Two smaller things fell out of the same fix:
+
+- `write_3mf()` named modifier `<part>` entries by iterating `STATIONS`, so it emitted
+  three however many modifier solids it was handed. A caller with two got a dangling
+  `<part id="4">`. Numbering now comes off the modifier list itself.
+- The coupon's modifier blocks are 12.3 mm wide and were about to merge across a 24 mm
+  block, which would have printed the whole coupon solid — reproducing the dense region
+  but not the 40 % field it sits in, and making the "coupon exercises sparse infill"
+  assertion a fiction. `IC_Y` is derived from the block width now, not typed.

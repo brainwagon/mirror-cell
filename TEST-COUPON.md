@@ -7,7 +7,7 @@ profile rather than the geometry, and a pocket that is 0.15 mm tight cracks a pl
 spent three and a half hours printing.
 
 ```sh
-python3 test_coupon.py     # 28 checks, then build/coupon_fit.* and build/coupon_insert.*
+python3 test_coupon.py     # 38 checks, then build/coupon_fit.* and build/coupon_insert.*
 ```
 
 It also writes `build/coupons.json`, which puts both coupons in the viewer's
@@ -35,15 +35,22 @@ The engraved number above each column is the clearance added to across-flats. Th
 corner marks the tight (0.10) end. Every hex pocket has a through hole so a fastener that
 turns out to be a press fit can be punched back out.
 
-**`coupon_insert`** — 34 × 24 × 20.7 mm block, ~12 cc. Both heat-set insert bores in
+**`coupon_insert`** — 34 × 32.6 × 20.7 mm block, ~15 cc. Both heat-set insert bores in
 their **real print orientations**, at the real wall thicknesses:
 
 - Two horizontal 10-24 bores (Ø6.5 and Ø6.6 × 14 deep) entering opposite ends of a block
-  drawn at the tube plate's own 12.7 mm thickness. This bore is radial in the real part,
-  so it prints as an unsupported round hole with only 3.1 mm of roof over it — it is the
-  one bore in the design whose printed shape is not its drawn shape.
-- Two vertical M3 bores (Ø4.0 and Ø4.1 × 6 deep) in an 8 mm rib, which is a centering
-  post top in all the ways that matter to a melting insert.
+  drawn at the tube plate's own 12.7 mm thickness. **Axis parallel to the layers** — the
+  bore is radial in the real part, so it prints as an unsupported round hole with only
+  3.1 mm of roof over it. It is the one bore in the design whose printed shape is not its
+  drawn shape, and reproducing that orientation is the entire point of this coupon.
+- Two vertical M3 bores (Ø4.0 and Ø4.1 × 6 deep) — axis *perpendicular* to the layers,
+  which is also how they print in the real part — in an 8 mm rib, a centering post top in
+  all the ways that matter to a melting insert.
+- A solid **modifier** around each 10-24 bore, the same 12.3 mm wide block the tube plate
+  carries, so the roof over the bore prints into 100 % infill here exactly as it does
+  there. The block is 32.6 mm wide rather than 24 so those two regions stay islands in
+  40 % gyroid instead of merging and printing the whole coupon solid. Present only in the
+  **3MF** — the STL is geometry alone.
 
 Print two spare `pocket_cap.stl` alongside; you need a printed disc to test the printed
 counterbore.

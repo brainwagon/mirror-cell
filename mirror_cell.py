@@ -786,13 +786,15 @@ def insert_bosses():
             for a in STATIONS]
 
 
-# Which parts carry modifiers, what the modifiers are, and what they override.
+# Which parts modelled HERE carry modifiers, what the modifiers are, and what they
+# override. test_coupon.py has its own table and passes it in -- this module must not
+# import that one, since that one imports this.
 MODIFIERS = {
     "tube_plate": (insert_bosses, "insert_solid", {"sparse_infill_density": "100%"}),
 }
 
 
-def write_3mf(shape, path, slice_spec, part_number=None):
+def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
     """A 3MF carrying the part AND the settings it wants.
 
     build123d's Mesher writes plain 3MF; the settings ride alongside it as per-object
@@ -807,7 +809,7 @@ def write_3mf(shape, path, slice_spec, part_number=None):
     import re, zipfile
     path.parent.mkdir(parents=True, exist_ok=True)
     name = part_number or path.stem
-    mods = MODIFIERS.get(name)
+    mods = MODIFIERS.get(name) if modifiers is None else modifiers
     rows = "".join(f'    <metadata key="{k}" value="{v}"/>\n'
                    for k, v in slice_spec.config().items())
 
@@ -835,6 +837,7 @@ def write_3mf(shape, path, slice_spec, part_number=None):
     # mesh per modifier, and <part id> matches each component's objectid -- the layout a
     # real project file uses.
     make, mod_name, overrides = mods
+    solids = list(make())
 
     def mesh_object(sh, oid):
         """ONE shape per object. add_shape() on a compound of disjoint solids silently
@@ -854,7 +857,7 @@ def write_3mf(shape, path, slice_spec, part_number=None):
     u = lambda: str(uuid.uuid4())
     ident = "1 0 0 0 1 0 0 0 1 0 0 0"
     blocks = [mesh_object(shape, 1)]
-    blocks += [mesh_object(s, 2 + i) for i, s in enumerate(make())]
+    blocks += [mesh_object(s, 2 + i) for i, s in enumerate(solids)]
     ids = list(range(1, len(blocks) + 1))
     comps = "".join(f'    <component objectid="{i}" p:UUID="{u()}" '
                     f'transform="{ident}"/>\n' for i in ids)
@@ -876,10 +879,14 @@ def write_3mf(shape, path, slice_spec, part_number=None):
                    for k, v in overrides.items())
     parts = (f'    <part id="1" subtype="normal_part">\n'
              f'      <metadata key="name" value="{name}"/>\n      {mtx}\n    </part>\n')
+    # Numbered off the modifier list itself, not off STATIONS. Naming them by station
+    # angle read better but pinned this writer to three-per-part: a caller with two
+    # modifiers got three <part> entries, the last pointing at an object that does not
+    # exist. The names are labels in the slicer's object tree; the count is structural.
     parts += "".join(
         f'    <part id="{2+i}" subtype="modifier_part">\n'
-        f'      <metadata key="name" value="{mod_name}_{int(a)}"/>\n      {mtx}\n{over}'
-        f'    </part>\n' for i, a in enumerate(STATIONS))
+        f'      <metadata key="name" value="{mod_name}_{i+1}"/>\n      {mtx}\n{over}'
+        f'    </part>\n' for i in range(len(solids)))
     cfg = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
            f'  <object id="{container}">\n'
            f'    <metadata key="name" value="{name}"/>\n{rows}{parts}'

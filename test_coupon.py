@@ -60,8 +60,16 @@ NOTCH = 6.0      # orientation key, at the tightest-fit corner
 PAD_FITS = (0.15, 0.30)
 
 # --- insert coupon ------------------------------------------------------------
-IC_X, IC_Y = 34.0, 24.0
+IC_X = 34.0
 IC_T = mc.TUBE_PLATE_T          # the real roof over the radial bore is what is at risk
+# Each bore is reinforced by a solid modifier the width of the tube plate's, and the
+# coupon is sized so those two blocks stay ISLANDS in sparse infill, as they are in the
+# plate. At the old 24 mm the two 12.3 mm blocks met in the middle and ran off both rims,
+# so the coupon would have printed solid throughout -- reproducing the dense region but
+# not the 40 % field it sits in, and quietly making the "coupon exercises sparse infill"
+# check below a fiction. 8 mm of sparse, split between the gap and the two rims.
+IC_BOSS_W = mc.INSERT_OD + 2 * mc.INSERT_MIN_WALL
+IC_Y = 2 * IC_BOSS_W + 8.0
 RIB_W, RIB_H, RIB_L = mc.POST_T, 8.0, 30.0   # stands in for a centering post top
 BORE_10_24 = (mc.INSERT_BORE_D, mc.INSERT_BORE_D + 0.1)
 BORE_M3 = (mc.M3_INSERT_D, mc.M3_INSERT_D + 0.1)
@@ -129,6 +137,36 @@ def fit_coupon():
 
 # ---------------------------------------------------------------- INSERT COUPON
 
+def ic_bores():
+    """(sx, y, diameter) for each radial bore -- one rim each, one diameter each.
+
+    The single expression for where the bores go. The cut, the solid modifier that
+    reinforces it, and the checks that prove both landed all read it, so they cannot end
+    up describing different holes.
+    """
+    return [(-1 if j == 0 else 1, (-1 if j == 0 else 1) * IC_Y / 4, d)
+            for j, d in enumerate(BORE_10_24)]
+
+
+def insert_bosses():
+    """The coupon's bores forced solid -- the tube plate's insert_bosses(), locally.
+
+    Without these the coupon prints its roof over 40 % gyroid while the plate prints
+    its over 100 %, so the single thing this coupon exists to measure is the one thing
+    it would not reproduce. Same width as the plate's blocks, and spanning the full
+    thickness for the same reason.
+    """
+    return [Pos(sx * (IC_X / 2 - mc.INSERT_DEPTH / 2), y, IC_T / 2)
+            * Box(mc.INSERT_DEPTH, IC_BOSS_W, IC_T, align=(Align.CENTER,) * 3)
+            for sx, y, _ in ic_bores()]
+
+
+# Passed to write_3mf() explicitly: mirror_cell.py cannot hold this entry, because it
+# would have to import this module and this module imports it.
+IC_MODIFIERS = (insert_bosses, "insert_solid", {"sparse_infill_density": "100%"})
+MODIFIERS = {"coupon_insert": IC_MODIFIERS}
+
+
 def insert_coupon():
     """Heat-set insert bores in their real orientations, at the real wall thicknesses.
 
@@ -139,12 +177,16 @@ def insert_coupon():
     """
     b = extrude(Rectangle(IC_X, IC_Y), IC_T)
 
-    for j, d in enumerate(BORE_10_24):
-        sx = -1 if j == 0 else 1
-        y = -IC_Y / 4 if j == 0 else IC_Y / 4
-        bore = Rot(0, 90, 0) * Cylinder(radius=d / 2, height=mc.INSERT_DEPTH,
-                                        align=(Align.CENTER, Align.CENTER, Align.MIN))
-        b -= Pos(sx * IC_X / 2, y, IC_T / 2) * Rot(0, 0, 0 if sx > 0 else 180) * bore
+    for sx, y, d in ic_bores():
+        # Mouth in the rim, cutting INWARD. The direction comes from the alignment rather
+        # than from a rotation applied after placement: a cut aimed outward still yields a
+        # perfectly valid solid -- one with no bore in it at all, which is what shipped.
+        # Every check here was arithmetic on constants, so all five passed a coupon whose
+        # only holes were the two vertical M3 ones. See the bore checks in verify().
+        bore = Rot(0, 90, 0) * Cylinder(
+            radius=d / 2, height=mc.INSERT_DEPTH,
+            align=(Align.CENTER, Align.CENTER, Align.MIN if sx < 0 else Align.MAX))
+        b -= Pos(sx * IC_X / 2, y, IC_T / 2) * bore
 
     # Rib standing in for a centering post top: same 8 mm wall, so an insert that
     # bulges a post wall bulges this one.
@@ -254,6 +296,35 @@ def verify():
         f"the two radial bores do not break into each other across {IC_Y:.0f} mm")
     chk(mc.INSERT_DEPTH * 2 < IC_X,
         f"both {mc.INSERT_DEPTH:.0f} mm bores fit end-to-end in {IC_X:.0f} mm")
+
+    # The bores are actually THERE, asked of the solid.
+    #
+    # Everything above this is arithmetic on constants, and all of it passed a coupon that
+    # had no radial bores at all: the cut was aimed outward from the rim, removed nothing,
+    # and left a valid solid whose only holes were the two vertical M3 ones. Nothing in
+    # the numbers could have noticed -- the numbers were all correct. So the check is put
+    # where it can be answered: intersect each intended bore with the coupon and require
+    # the material to be gone.
+    ic = insert_coupon()
+    for sx, y, d in ic_bores():
+        probe = (Pos(sx * IC_X / 2, y, IC_T / 2) * Rot(0, 90, 0)
+                 * Cylinder(radius=d / 2 - 0.05, height=mc.INSERT_DEPTH - 0.1,
+                            align=(Align.CENTER, Align.CENTER,
+                                   Align.MIN if sx < 0 else Align.MAX)))
+        left = (ic & probe).volume
+        rim = "-x" if sx < 0 else "+x"
+        chk(left < 1.0,
+            f"the {d:g} mm bore in the {rim} rim is open through "
+            f"{mc.INSERT_DEPTH:g} mm ({left:.1f} mm^3 of ABS left in it)")
+
+    # ...and open at the rim, not a sealed pocket -- a heat-set insert goes in from
+    # outside. A bore cut inward from 1 mm INSIDE the face would pass the check above.
+    for sx, y, d in ic_bores():
+        face = (Pos(sx * (IC_X / 2 - 0.15), y, IC_T / 2) * Rot(0, 90, 0)
+                * Cylinder(radius=d / 2 - 0.05, height=0.3,
+                           align=(Align.CENTER,) * 3))
+        chk((ic & face).volume < 0.2,
+            f"the {d:g} mm bore breaks the {'-x' if sx < 0 else '+x'} rim face")
     chk((RIB_W - max(BORE_M3)) / 2 >= 1.8,
         f"wall around the M3 insert = {(RIB_W - max(BORE_M3))/2:.2f} mm, as in a post")
     chk(RIB_H > mc.M3_INSERT_DEPTH,
@@ -268,6 +339,39 @@ def verify():
     chk(COUPON_SLICE.walls is not None and COUPON_SLICE.density < 100,
         f"the reference part is one with real walls and sparse infill, so the coupon "
         f"exercises them ({COUPON_SLICE.prose()})")
+
+    # --- and at the reinforcement the real part gets ---------------------------
+    # The tube plate forces the region around each insert solid. A coupon without that
+    # measures a roof printed over gyroid and reports it as the plate's -- the settings
+    # would match while the material above the bore did not.
+    _, ic_mod_name, ic_over = IC_MODIFIERS
+    chk(ic_over.get("sparse_infill_density") == "100%",
+        f"coupon modifier '{ic_mod_name}' fills its region solid "
+        f"({ic_over.get('sparse_infill_density')})")
+    chk(ic_over == mc.MODIFIERS["tube_plate"][2],
+        "the coupon's overrides are the tube plate's, so the reinforcement it tests is "
+        "the reinforcement the plate gets")
+    bosses = insert_bosses()
+    chk(len(bosses) == len(BORE_10_24),
+        f"{len(bosses)} solid regions for {len(BORE_10_24)} bores")
+    # Each block must actually contain its bore -- placed by hand from IC_X rather than
+    # cut by the same expression, so this is the check that they meet.
+    for (sx, y, d), box in zip(ic_bores(), bosses):
+        want = (Pos(sx * IC_X / 2, y, IC_T / 2) * Rot(0, 90, 0)
+                * Cylinder(radius=d / 2, height=mc.INSERT_DEPTH,
+                           align=(Align.CENTER, Align.CENTER,
+                                  Align.MIN if sx < 0 else Align.MAX)))
+        outside = want.volume - (want & box).volume
+        chk(outside < 1.0,
+            f"the solid region encloses the {d:g} mm bore in the "
+            f"{'-x' if sx < 0 else '+x'} rim ({outside:.1f} mm^3 outside it)")
+    # ...while leaving sparse infill to be sparse. Two blocks that merge and reach both
+    # rims turn the whole coupon solid, which is not what the plate does.
+    gap = IC_Y / 2 - IC_BOSS_W          # between the two blocks
+    margin = IC_Y / 4 - IC_BOSS_W / 2   # from each block to the rim
+    chk(gap >= 2.0 and margin >= 2.0,
+        f"the two solid regions stay islands: {gap:.1f} mm of sparse infill between "
+        f"them, {margin:.1f} mm at each rim")
     for name in COUPONS:
         z0 = COUPONS[name]().bounding_box().min.Z
         chk(abs(z0) < 1e-6, f"{name} rests on the bed (z_min = {z0:+.3f} mm)")
@@ -306,11 +410,40 @@ if __name__ == "__main__":
         part = fn()
         export_step(part, f"build/{name}.step")
         export_stl(part, f"build/{name}.stl")
-        mc.write_3mf(part, Path(f"build/3mf/{name}.3mf"), COUPON_SLICE, part_number=name)
-        got = mc.read_3mf_config(Path(f"build/3mf/{name}.3mf"))
+        p3 = Path(f"build/3mf/{name}.3mf")
+        mc.write_3mf(part, p3, COUPON_SLICE, part_number=name,
+                     modifiers=MODIFIERS.get(name))
+        got = mc.read_3mf_config(p3)
         if got != COUPON_SLICE.config():
             raise SystemExit(f"\n3MF SETTINGS DID NOT ROUND-TRIP for {name}\n"
                              f"  wrote:  {got}\n  meant:  {COUPON_SLICE.config()}")
+
+        # Read the MODIFIER MESHES back out of the file. verify() checked the geometry
+        # going in; only the file says what came out, and a compound handed to add_shape()
+        # once wrote one mesh out of three while every input check passed.
+        found = mc.read_3mf_modifiers(p3)
+        want = MODIFIERS.get(name)
+        if not want:
+            if found:
+                raise SystemExit(f"\n{p3} has {len(found)} unexpected modifier(s)")
+        else:
+            make, _, over = want
+            if len(found) != len(make()):
+                raise SystemExit(
+                    f"\n{p3} carries {len(found)} modifier meshes, expected "
+                    f"{len(make())} -- one per bore.\n  found: {[f[0] for f in found]}")
+            for (sx, y, d), (nm, ov, bb) in zip(ic_bores(), found):
+                if ov != over:
+                    raise SystemExit(f"\n{p3}: modifier {nm} carries {ov}, meant {over}")
+                cx = sx * (IC_X / 2 - mc.INSERT_DEPTH / 2)
+                if abs((bb[0] + bb[3]) / 2 - cx) > 1.0 or abs((bb[1] + bb[4]) / 2 - y) > 1.0:
+                    raise SystemExit(
+                        f"\n{p3}: modifier {nm} sits at "
+                        f"({(bb[0]+bb[3])/2:.1f}, {(bb[1]+bb[4])/2:.1f}), "
+                        f"not on the bore at ({cx:.1f}, {y:.1f})")
+                if not (bb[2] <= 1e-6 and bb[5] >= IC_T - 1e-6):
+                    raise SystemExit(f"\n{p3}: modifier {nm} spans z "
+                                     f"{bb[2]:.2f}..{bb[5]:.2f}, not the full thickness")
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
