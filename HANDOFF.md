@@ -280,3 +280,28 @@ Two smaller things fell out of the same fix:
   block, which would have printed the whole coupon solid — reproducing the dense region
   but not the 40 % field it sits in, and making the "coupon exercises sparse infill"
   assertion a fiction. `IC_Y` is derived from the block width now, not typed.
+
+**The fit coupon was then audited for the same weakness and had it, without the bug.**
+All nineteen of its features are genuinely cut — probed and confirmed — but only three of
+its fourteen checks touched the solid, and none asked whether any feature existed. A plain
+slab would have passed everything except the two bounding-box checks, which only see the
+outline. The head row had no solid check at all, which is the row that decides `FIT_SLIP`
+— still the one predicted rather than measured. `test_coupon.py` is now 101 checks.
+
+Two things in that fix are worth copying elsewhere:
+
+- **A probe placed from the same table that cuts the feature cannot, alone, prove the
+  feature is real.** A table entry describing a hole outside the plate moves the cut and
+  the probe together: the cut removes nothing, the probe finds nothing, both agree, and
+  the check passes. Each feature is therefore required to lie in the *uncut blank* first,
+  and to be gone from the finished part second. Only the pair means anything. All four
+  failure modes — sunk below the plate, off the edge, never cut, and hardware too big for
+  its pocket — were reintroduced and watched to fail.
+- `hex_head()` is now a function in `mirror_cell.py` beside `hex_nut()`. It is not a
+  printed part and not in `PARTS`; it exists so checks can put real hardware into a real
+  recess. It was an expression written out inside `verify()`, and the coupon needed the
+  same one.
+
+The blanket `except Exception: clash = 0.0` around the coupon's nut seating check is gone.
+It was not inert — the intersection ran — but it is the construct that reported PASS on
+four broken models here, and there is no reason to keep it.

@@ -7,7 +7,7 @@ profile rather than the geometry, and a pocket that is 0.15 mm tight cracks a pl
 spent three and a half hours printing.
 
 ```sh
-python3 test_coupon.py     # 38 checks, then build/coupon_fit.* and build/coupon_insert.*
+python3 test_coupon.py     # 101 checks, then build/coupon_fit.* and build/coupon_insert.*
 ```
 
 It also writes `build/coupons.json`, which puts both coupons in the viewer's

@@ -451,6 +451,17 @@ def hex_nut():
     return n
 
 
+def hex_head():
+    """A 10-24 hex head, for checking that one seats in a pocket drawn for it.
+
+    Not a printed part and not in PARTS -- it exists so the checks can put real hardware
+    into a real recess instead of comparing across-flats numbers. verify() here and
+    test_coupon.py both use it, which is why it is a function and not an expression
+    written out twice.
+    """
+    return extrude(RegularPolygon(radius=HEAD_AF / sqrt(3.0), side_count=6), HEAD_T)
+
+
 def washer():
     """#4 flat washer -- the Landing pad. Bore must be under the bolt's point; see PAD_ID."""
     return extrude(Circle(PAD_OD / 2) - Circle(PAD_ID / 2), PAD_T)
@@ -1581,7 +1592,7 @@ def verify():
     # blanket except: written above it and wrapped, this check intersected a float, threw,
     # and reported PASS on four separately broken models. An exception here should be a
     # crash, not a green tick.
-    head = extrude(RegularPolygon(radius=HEAD_AF / sqrt(3.0), side_count=6), HEAD_T)
+    head = hex_head()
     cap_z = (MIRROR_PLATE_T - RTV_WELL_DEPTH) - CAP_T
     for nm, host, placed in (
             ("push bolt head", "push_knob", Pos(0, 0, KNOB_T - HEAD_T) * head),

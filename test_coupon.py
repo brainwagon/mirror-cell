@@ -91,6 +91,28 @@ NUT_POCKET_H = mc.NUT_T + 0.4     # identical to tube_plate()
 HEAD_POCKET_H = mc.HEAD_T + 0.4   # identical to mirror_plate() and knob()
 
 
+def misc_features():
+    """(label, x, diameter, z_from, z_to) for every round feature on the MISC row.
+
+    One expression per feature, read by the cut below AND by the check that proves the
+    cut landed. Written as a table for that reason: the insert coupon shipped with two
+    bores that were never cut, because the numbers describing them were correct and
+    nothing asked the solid whether the holes were there.
+    """
+    return [
+        # Both sides shrink, so this fit is not verifiable on paper. It is MEANT to be
+        # loose (CAP_CLEAR); the coupon proves the disc still drops in, not that it grips.
+        ("cap counterbore", -37.5, mc.CAP_D, COUPON_T - mc.CAP_T, COUPON_T),
+        # Landing pads open DOWNWARD, into the bed face -- see PAD_FITS.
+        *[(f"pad recess +{pf:.2f}", -17.0 + j * 15.0, mc.PAD_OD + 2 * pf,
+           0.0, mc.PAD_T + 0.15) for j, pf in enumerate(PAD_FITS)],
+        ("spring seat", 15.0, mc.SPRING_SEAT_D,
+         COUPON_T - mc.SPRING_SEAT_DEPTH, COUPON_T),
+        # The push bolt must slide freely through the whole of its travel.
+        ("clearance hole", 35.0, mc.BOLT_CLEAR_D, 0.0, COUPON_T),
+    ]
+
+
 def fit_coupon():
     """Top face at z=COUPON_T. Pockets open UP, as they do in every real part."""
     p = extrude(Rectangle(GAUGE_X, GAUGE_Y), COUPON_T)
@@ -113,24 +135,9 @@ def fit_coupon():
     p = engrave(p, "N", -GAUGE_X / 2 + 3.4, NUT_Y)
     p = engrave(p, "H", -GAUGE_X / 2 + 3.4, HEAD_Y)
 
-    # --- pocket cap counterbore: printed disc into printed bore ----------------
-    # Both sides shrink, so this fit is not verifiable on paper either. It is meant to
-    # be loose (CAP_CLEAR); the coupon proves the disc still drops in, not that it grips.
-    p -= Pos(-37.5, MISC_Y, COUPON_T - mc.CAP_T) * extrude(
-        Circle(mc.CAP_D / 2), mc.CAP_T)
-
-    # --- landing pads, on the BED face ----------------------------------------
-    for j, pf in enumerate(PAD_FITS):
-        p -= Pos(-17.0 + j * 15.0, MISC_Y) * extrude(
-            Circle(mc.PAD_OD / 2 + pf), mc.PAD_T + 0.15)
-
-    # --- spring seat ----------------------------------------------------------
-    p -= Pos(15.0, MISC_Y, COUPON_T - mc.SPRING_SEAT_DEPTH) * extrude(
-        Circle(mc.SPRING_SEAT_D / 2), mc.SPRING_SEAT_DEPTH)
-
-    # --- plain 10-24 clearance hole -------------------------------------------
-    # The push bolt must slide freely in this hole through the whole of its travel.
-    p -= Pos(35.0, MISC_Y) * extrude(Circle(mc.BOLT_CLEAR_D / 2), COUPON_T)
+    # --- everything that is not a hex pocket, from the one table ---------------
+    for _, x, d, z0, z1 in misc_features():
+        p -= Pos(x, MISC_Y, z0) * extrude(Circle(d / 2), z1 - z0)
 
     return p
 
@@ -271,22 +278,74 @@ def verify():
         label_gap < NUT_Y - corners / 2,
         "labels sit clear of both pocket rows")
 
-    # --- the real hardware must pass at the chosen rung -----------------------
-    # Solid against solid, the check this project trusts: a nut lowered into the pocket
-    # cut at FIT_PRESS -- the rung the printed coupon actually accepted -- must not touch
-    # it. (This proves the coupon is drawn right. It cannot prove the print; that is the
-    # whole reason the coupon exists.)
+    # --- every feature is actually cut ----------------------------------------
+    # Asked of the solid, because everything above this point is arithmetic on constants
+    # and would pass a plain slab. The two bounding-box checks only see the outline. This
+    # is the class of check the insert coupon did not have, and it shipped without its
+    # bores as a result -- so each advertised feature is probed here with a body slightly
+    # smaller than the cut, which must come back empty.
     body = fit_coupon()
-    if mc.FIT_PRESS in FIT_LADDER:
-        i = FIT_LADDER.index(mc.FIT_PRESS)
-        placed = Pos(col_x(i), NUT_Y, COUPON_T - NUT_POCKET_H) * mc.hex_nut()
-        try:
-            clash = (placed & body).volume
-        except Exception:
-            clash = 0.0
+    blank = extrude(Rectangle(GAUGE_X, GAUGE_Y), COUPON_T)
+
+    def empty(probe, label, tol=1.0):
+        """Two conditions, and the second is the one worth the words.
+
+        The probe is placed from the same table that cuts the feature, so a table entry
+        describing a hole OUTSIDE the plate would move the cut and the probe together:
+        the cut would remove nothing, the probe would find nothing, and the check would
+        pass. So the feature is also required to lie in the blank -- where there is ABS
+        to remove -- before it is required to be gone from the finished part.
+        """
+        inside = (blank & probe).volume
+        chk(inside > 0.5 * probe.volume,
+            f"{label} lies inside the plate ({inside/probe.volume:.0%} of it does)")
+        chk((body & probe).volume < tol,
+            f"{label} is cut ({(body & probe).volume:.2f} mm^3 of ABS in it)")
+
+    for i, f in enumerate(FIT_LADDER):
+        for row, y, af, h in (("nut", NUT_Y, mc.NUT_AF, NUT_POCKET_H),
+                              ("head", HEAD_Y, mc.HEAD_AF, HEAD_POCKET_H)):
+            # Inscribed cylinder: inside the hex at any rotation, so this tests presence
+            # and depth without re-deriving the hexagon's corners.
+            empty(Pos(col_x(i), y, COUPON_T - h / 2)
+                  * Cylinder(radius=(af + f) / 2 * 0.9, height=h - 0.1),
+                  f"{row} pocket at fit {f:.2f}")
+        # The punch-out hole under both pockets in the column.
+        for row, y in (("nut", NUT_Y), ("head", HEAD_Y)):
+            empty(Pos(col_x(i), y, COUPON_T / 2)
+                  * Cylinder(radius=mc.BOLT_CLEAR_D / 2 - 0.1, height=COUPON_T),
+                  f"{row} pocket at fit {f:.2f} punches through")
+
+    for label, x, d, z0, z1 in misc_features():
+        empty(Pos(x, MISC_Y, (z0 + z1) / 2)
+              * Cylinder(radius=d / 2 - 0.1, height=(z1 - z0) - 0.1), label)
+
+    empty(Pos(-GAUGE_X / 2, -GAUGE_Y / 2, COUPON_T / 2)
+          * Box(NOTCH - 0.2, NOTCH - 0.2, COUPON_T,
+                align=(Align.MIN, Align.MIN, Align.CENTER)),
+          "the orientation notch")
+
+    # --- the real hardware must pass at the chosen rung -----------------------
+    # Solid against solid, the check this project trusts: hardware lowered into the pocket
+    # cut at the fit the design has settled on must not touch it. Both rows, because
+    # FIT_SLIP is the value still predicted rather than measured, and it was the one with
+    # no solid check at all. (This proves the coupon is drawn right. It cannot prove the
+    # print; that is the whole reason the coupon exists.)
+    #
+    # The intersections are deliberately NOT wrapped in a blanket except. One here used to
+    # be, and that construct reported PASS on four separately broken models elsewhere in
+    # this project -- an exception here should be a crash, not a green tick.
+    for row, y, h, fit, part in (
+            ("10-24 nut", NUT_Y, NUT_POCKET_H, mc.FIT_PRESS, mc.hex_nut()),
+            ("10-24 head", HEAD_Y, HEAD_POCKET_H, mc.FIT_SLIP, mc.hex_head())):
+        chk(fit in FIT_LADDER, f"{row}: the design's {fit:.2f} is a rung on the ladder")
+        if fit not in FIT_LADDER:
+            continue
+        placed = Pos(col_x(FIT_LADDER.index(fit)), y, COUPON_T - h) * part
+        assert placed.volume > 0 and body.volume > 0, f"{row}: empty operand"
+        clash = (placed & body).volume
         chk(clash < 1.0,
-            f"a real 10-24 nut seats in the {mc.FIT_PRESS:.2f} pocket "
-            f"(overlap {clash:.2f} mm^3)")
+            f"a real {row} seats in the {fit:.2f} pocket (overlap {clash:.2f} mm^3)")
 
     # --- insert coupon --------------------------------------------------------
     roof = IC_T / 2 - max(BORE_10_24) / 2
