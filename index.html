@@ -118,13 +118,14 @@
   <h2>Axial stack (mm)</h2>
   <table id="stack"></table>
 
-  <h2>Download STEP</h2>
+  <h2>Downloads</h2>
   <div id="dl"></div>
 
   <div class="note">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan
     &middot; &larr;/&rarr; to step. Everything here is read from
     <code>build/assembly.json</code>, written by <code>mirror_cell.py</code> &mdash; the
-    instructions, the geometry and the download list come from the same source. Coupons
+    instructions, the geometry, the bill of materials and the download list come from the
+    same source. Coupons
     come from <code>build/coupons.json</code> (<code>test_coupon.py</code>).</div>
 </div>
 
@@ -326,7 +327,8 @@ async function build() {
   }
 
   buildUI(A);
-  renderDownloads([...A.downloads, ...(coupons ? coupons.downloads : [])], !!coupons);
+  renderDownloads([...A.downloads, ...(coupons ? coupons.downloads : [])], !!coupons,
+                  A.bom);
   gotoStep(step, true);
   fitMode();
 }
@@ -459,7 +461,22 @@ function dlRow(d) {
     <a class="stl" href="${d.stl}" download title="${d.stl}">STL</a></div>`;
 }
 
-function renderDownloads(list, haveCoupons) {
+/* The BOM is a document, not a solid, so it gets its own row shape: two formats and no
+   quantity. The counts in the subtitle are taken off the rows the model emitted, not
+   off the file being linked -- if the two ever disagreed, the count is the honest one. */
+function bomRow(B) {
+  const pieces = B.rows.filter(r => r.section === 'printed')
+                       .reduce((n, r) => n + r.qty, 0);
+  const buy = B.rows.filter(r => r.section === 'purchased').length;
+  return `<div class="grp">Bill of materials</div>
+    <div class="row"><span class="nm">Annotated BOM
+      <em>${pieces} printed pieces &middot; ${buy} lines to buy</em></span>
+    <a href="${B.md}" download title="${B.md}">MD</a>
+    <a class="stl" href="${B.csv}" download title="${B.csv}">CSV</a></div>`;
+}
+
+function renderDownloads(list, haveCoupons, B) {
+  if (B) dl.insertAdjacentHTML('beforeend', bomRow(B));
   for (const kind of ['printed', 'coupon', 'vendor']) {
     const rows = list.filter(d => d.kind === kind);
     if (!rows.length) continue;

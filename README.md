@@ -23,7 +23,8 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 python3 mirror_cell.py
 ```
 
-Runs 92 assertions, then writes `build/*.step`, `build/*.stl` and `build/assembly.json`.
+Runs 112 assertions, then writes `build/*.step`, `build/*.stl`, `build/assembly.json`
+and the bill of materials (`build/bom.md`, `build/bom.csv`).
 The assertions encode the spec — the three gaps that must never close, both fastener
 bearing floors, assembly clearances, spring travel, post placement, and printer bed fit.
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were
@@ -56,8 +57,15 @@ fan on the rear face, so the finished assembly can be seen in context. Both are 
 only and can be switched off in Explore. **The fan is a stand-in drawn in `fan()`,
 not a vendor solid** — trust its envelope, not its details.
 
-Under both is a **Download STEP** list: every printed part and both test coupons, each
-with its STEP and (smaller) its STL. The list is generated —
+Under both is a **Downloads** panel. First the **annotated bill of materials** — MD or
+CSV — which is not a hand-maintained table: `bom()` in `mirror_cell.py` counts the printed
+quantities off the same instance lists the picture uses, reads every hardware dimension
+out of the parameters, and carries one line of *why* for each row (machine screws not cap
+screws, springs by geometry not by rate, fender washers on the outside). Assertions check
+that it lists every printed part, agrees with the download list part for part, buys
+exactly the nuts, washers, springs and screws the model draws, and leaves no row
+unannotated. Below it is every printed part and both test coupons, each
+with its STEP and (smaller) its STL. That list is generated —
 printed parts from `assembly.json`, coupons from `coupons.json` — so it cannot offer a
 file the exporter does not write, and an assertion checks that it names every part in
 `PARTS` with the right quantity. The coupon rows appear once `test_coupon.py` has been

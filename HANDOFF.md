@@ -8,12 +8,12 @@ Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
 
 ## Where it stands
 
-Design is complete and internally consistent. **71 assertions pass.** Nothing has been
+Design is complete and internally consistent. **112 assertions pass.** Nothing has been
 printed from this model.
 
 ```sh
 cd ~/mirror-cell
-python3 mirror_cell.py            # verify + export build/*.step, *.stl, assembly.json
+python3 mirror_cell.py            # verify + export build/*.step, *.stl, assembly.json, bom.md
 python3 -m http.server 8018       # then open http://localhost:8018/
 ```
 
@@ -27,7 +27,10 @@ python3 -m http.server 8018       # then open http://localhost:8018/
 | pocket_cap | 3 | 0.16 cc | bedded in RTV, loose fit |
 | shim | 3 | 0.57 cc | assembly aid, removed after cure |
 
-Purchased: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
+**The buy list is generated.** `build/bom.md` (and `.csv`, and a download button in the
+viewer) is written by `bom()` from the model's own numbers, with a line of reasoning on
+every row. Take that to the shop rather than the summary below, which is here only so
+this page reads as a whole: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
 6 × 10-24 hex nuts · 3 × #10 washers · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
 ≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
 3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
@@ -84,6 +87,10 @@ geometry, and `assembly.json` draws the spring from the seat bottom rather than 
 face, which was hiding 2.5 mm of its length in the viewer.
 
 ## Suggested slicer settings
+
+These now live in `PRINT` in `mirror_cell.py` and come out in `build/bom.md` next to the
+part they belong to — this table is the same data, kept here because it is what you scan
+before a print. **Change `PRINT`, not this table.**
 
 0.4 mm nozzle, 0.2 mm layers, both plates **rear-face-down, posts up, no supports needed**.
 

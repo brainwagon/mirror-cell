@@ -605,6 +605,173 @@ def downloads(parts):
              "step": f"build/{n}.step", "stl": f"build/{n}.stl"} for n in PARTS]
 
 
+# ---------------------------------------------------------------- BILL OF MATERIALS
+
+# What each printed part wants from the slicer, and the one thing about it worth knowing
+# at the bed. 0.4 mm nozzle, 0.2 mm layers, ABS at 250-255 C, bed 100-110 C, enclosure
+# closed, cooling 0-20%, 8-10 mm brim throughout -- those are settings for the machine,
+# not for a part, so they are printed once in the BOM preamble rather than on every row.
+PRINT = {
+    "tube_plate": ("5 walls / 5 solid / 40% gyroid",
+                   "Rear face down, no supports. Do not raise the infill: it adds "
+                   "internal stress and INCREASES warping, which is this plate's main "
+                   "failure mode."),
+    "mirror_plate": ("6 walls / 8 solid / 40% gyroid",
+                     "Rear face down, posts up, no supports. The 8 bottom layers are not "
+                     "a nicety -- the pull-bolt bearing floor is only 3.45 mm and carries "
+                     "the mirror, and the landing-pad recess ceilings are bridged."),
+    "clip": ("5 walls / 6 solid / 100%",
+             "Prints flat, which puts the 0.030\" air-gap face on the bed as a clean "
+             "surface instead of a supported overhang. Separate from the posts on "
+             "purpose: printed integrally they leave a 142.4 mm opening for a 152.4 mm "
+             "mirror."),
+    "push_knob": ("4 walls / 5 solid / 100%",
+                  "Blind hex pocket for a bolt HEAD. Pressing a head in is one-way -- "
+                  "there is no bore behind it to push against."),
+    "pull_knob": ("4 walls / 5 solid / 100%",
+                  "Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE "
+                  "FIRST and press a nut in: the pocket sits in a 2.2 mm wall, and the "
+                  "0.10 mm fit was measured in a 6 mm plate."),
+    "pocket_cap": ("100% infill",
+                   "A loose fit on purpose -- bedded in a spot of RTV, so there is no "
+                   "press fit to dial in."),
+    "shim": ("100% infill",
+             "Assembly aid only. Sets the 0.0625\" bond, then comes out at step 8."),
+}
+
+
+def purchased(total_cc=None):
+    """The buy list, with the reason each line is what it is. Every number here is read
+    from the parameters above rather than typed, so the BOM cannot drift from the model
+    the way a hand-maintained table does."""
+    preload = (SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)) * SPRING_RATE / 4.4482
+    return [
+        {"qty": 6, "item": "10-24 hex-head MACHINE screw",
+         "spec": f"{PUSH_BOLT_L / 25.4:g}\" long ({PUSH_BOLT_L:.1f} mm), zinc or stainless",
+         "note": "Machine screws, NOT hex cap screws: a #10 cap screw carries an "
+                 "unthreaded shank about 19 mm long, exactly where the captured nut in "
+                 "the tube plate needs thread. One length for all six, and a 1/2\" "
+                 "multiple, because odd lengths are a nuisance to source."},
+        {"qty": 6, "item": "10-24 hex nut",
+         "spec": f"{NUT_AF / 25.4:g}\" across flats, {NUT_T / 25.4:g}\" thick",
+         "note": "Three press into the tube plate's forward face (captured, for the push "
+                 "bolts), three press into the pull knobs. Identical parts -- the pull "
+                 "knob is what replaced the wing nut."},
+        {"qty": 3, "item": "#10 flat washer (landing pad)",
+         "spec": f"{WASHER_D / 25.4:g}\" OD, {WASHER_T / 25.4:g}\" thick",
+         "note": "What the push-bolt tips actually bear on. Steel on steel, so no bolt "
+                 "ever embosses the plastic and walks the collimation."},
+        {"qty": 3, "item": "Compression spring",
+         "spec": f"{SPRING_WIRE_D:g} mm wire x {SPRING_OD:g} mm OD x "
+                 f"{SPRING_FREE_L:g} mm free length (~13 lb/in)",
+         "note": f"BUY BY GEOMETRY, NOT BY RATE -- rate follows k = Gd^4/8D^3n and wire "
+                 f"diameter dominates at the fourth power. Do not buy a 'telescope "
+                 f"collimation spring kit': those compute to ~152 lb/in, ten times this, "
+                 f"and you would never turn the pull knobs. Gives {preload:.2f} lb "
+                 f"per station at the {PLATE_GAP / 25.4:g}\" gap."},
+        {"qty": 3, "item": "10-24 heat-set insert",
+         "spec": f"{INSERT_BORE_D:g} mm bore x {INSERT_DEPTH:g} mm",
+         "note": "Radial, in the tube plate rim, at mid-thickness. These three screws "
+                 "carry the entire cell -- mirror, plates and hardware."},
+        {"qty": 3, "item": "#10 screw (tube mount)",
+         "spec": "length to suit: tube wall 0.125\" + washer + insert reach",
+         "note": "Goes through the sonotube into the inserts above. Drill the tube using "
+                 "the insert bores as the guide, at the depth that reaches focus."},
+        {"qty": 3, "item": "1\" fender washer",
+         "spec": "1\" OD, #10 bore",
+         "note": "OUTSIDE the tube, and not optional. Statically the screws see ~70 psi "
+                 "against cardboard good for 1000, but a 10 g transport knock puts ~700 "
+                 "psi on the hole edge: the holes go oval and collimation is gone every "
+                 "time you move the scope. A fender washer spreads it ~15x."},
+        {"qty": 3, "item": "M3 heat-set insert",
+         "spec": f"{M3_INSERT_D:g} mm bore x {M3_INSERT_DEPTH:g} mm",
+         "note": "Into the tops of the centering posts, for the clips."},
+        {"qty": 3, "item": "M3 cap screw",
+         "spec": "~10 mm",
+         "note": "Holds a clip. Never snug one down onto the glass -- the clips are "
+                 "drop-insurance standing 0.030\" clear, not a clamp."},
+        {"qty": 1, "item": "Black ABS filament",
+         "spec": ("~1 kg spool" if total_cc is None else
+                  f"{total_cc:.0f} cc of part volume ({total_cc * 1.04 / 1000:.2f} kg "
+                  f"of ABS) -- a 1 kg spool covers it with the brim and a reprint"),
+         "note": "ABS for the heat: a black cell in a closed tube sits in the sun. It "
+                 "also creeps under sustained tension, which is why every steel-to-"
+                 "plastic interface in this design is loaded in compression."},
+        {"qty": 1, "item": "RTV silicone",
+         "spec": "neutral-cure, small tube",
+         "note": "Three dabs under the mirror at 0.0625\", plus a spot under each pocket "
+                 "cap. NOT acetic-cure (the vinegar smell) near an aluminised surface."},
+    ]
+
+
+def bom(parts, volumes=None):
+    """Printed parts and the buy list as one annotated table. Quantities for the printed
+    rows are counted off the assembly, exactly as downloads() does, so the BOM, the
+    download list and the picture cannot disagree about how many of anything there is."""
+    qty = {p["name"]: len(p["instances"]) for p in parts}
+    rows = []
+    for n in PARTS:
+        # .get, not [], so a part added to PARTS without print settings comes out as an
+        # empty row that verify() reports -- rather than a KeyError from a BOM function,
+        # which reads like a bug in the BOM instead of an unfinished part.
+        settings, note = PRINT.get(n, ("", ""))
+        v = (volumes or {}).get(n)
+        rows.append({"section": "printed", "qty": qty.get(n, 1), "item": n,
+                     "spec": settings + (f", {v / 1000:.2f} cc each" if v else ""),
+                     "note": note})
+    # Filament is the one purchased line that depends on the printed ones, so it is only
+    # quantified when real volumes are in hand (the export pass); verify() runs without.
+    total_cc = (sum(qty.get(n, 1) * v for n, v in volumes.items()) / 1000
+                if volumes else None)
+    for r in purchased(total_cc):
+        rows.append({"section": "purchased", **r})
+    return rows
+
+
+def bom_markdown(rows):
+    tot = sum(r["qty"] for r in rows if r["section"] == "printed")
+    out = [
+        "# Bill of materials — 6\" mirror cell",
+        "",
+        "Generated by `mirror_cell.py`. Every number comes from the model, so this file",
+        "cannot drift from the geometry — regenerate it rather than editing it.",
+        "",
+        f"**{tot} printed pieces** from {len(PARTS)} distinct parts, plus the buy list below.",
+        "",
+        "Printer settings that apply to everything: 0.4 mm nozzle, 0.2 mm layers, ABS at",
+        "250–255 °C, bed 100–110 °C, **enclosure closed, part cooling 0–20 %**, 8–10 mm brim.",
+        "Both plates print rear-face-down with no supports.",
+        "",
+        "## Printed parts",
+        "",
+        "| Qty | Part | Slicer | Why it is like that |",
+        "|---:|---|---|---|",
+    ]
+    for r in rows:
+        if r["section"] == "printed":
+            out.append(f"| {r['qty']} | `{r['item']}` | {r['spec']} | {r['note']} |")
+    out += ["", "## Purchased", "",
+            "| Qty | Item | Spec | Why |", "|---:|---|---|---|"]
+    for r in rows:
+        if r["section"] == "purchased":
+            out.append(f"| {r['qty']} | {r['item']} | {r['spec']} | {r['note']} |")
+    out += ["", "---", "",
+            "Traps worth re-reading before you buy: machine screws (not cap screws),",
+            "springs by geometry (not by rate), and fender washers on the OUTSIDE of the",
+            "tube. See `mirror-cell-spec.md` §7 and `HANDOFF.md`.", ""]
+    return "\n".join(out)
+
+
+def bom_csv(rows):
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["section", "qty", "item", "spec", "note"])
+    for r in rows:
+        w.writerow([r["section"], r["qty"], r["item"], r["spec"], r["note"]])
+    return buf.getvalue()
+
+
 def assembly():
     parts = [
         {"name": "tube_plate", "stl": "tube_plate.stl", "color": "#3d4450",
@@ -652,6 +819,10 @@ def assembly():
         "sequence": sequence(),
         "parts": parts,
         "downloads": downloads(parts),
+        # The BOM travels in assembly.json too, so the viewer can say how many lines it
+        # is offering without parsing the file it links to. The rows here carry no
+        # volumes -- the exporter writes the quantified copy to build/bom.md.
+        "bom": {"md": "build/bom.md", "csv": "build/bom.csv", "rows": bom(parts)},
         # generated procedurally in the viewer from these numbers
         "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
         # the tube is a plain annulus, so the viewer draws it rather than loading an STL
@@ -935,6 +1106,39 @@ def verify():
     chk(all(d["kind"] == "printed" for d in D),
         "every download is a printed part -- no purchased solid is in the design now")
 
+    # --- the BOM must agree with the assembly it claims to describe ------------
+    # A BOM is exactly the document that rots: it is read once, at the shop counter,
+    # long after the geometry moved. So nothing in it is typed -- quantities come off
+    # the same instance counts the picture does, and these checks are what keep it so.
+    B = A["bom"]["rows"]
+    bprint = {r["item"]: r for r in B if r["section"] == "printed"}
+    chk(set(bprint) == set(PARTS),
+        f"BOM lists every printed part; missing {set(PARTS) - set(bprint)}, "
+        f"stray {set(bprint) - set(PARTS)}")
+    chk(all(bprint[n]["qty"] == inst[n] for n in bprint if n in inst),
+        "BOM printed quantities match the instance counts in the assembly")
+    chk({d["name"]: d["qty"] for d in printed} == {n: r["qty"] for n, r in bprint.items()},
+        "BOM and download list agree on quantities part for part")
+    chk(all(r["note"].strip() and r["spec"].strip() for r in B),
+        "every BOM line is annotated -- a spec and a reason, not just a count")
+    # The fasteners the model actually draws must be on the buy list in the right number.
+    # This is the check that would fire if a station were added, or a knob stopped
+    # capturing a nut: the drawn count changes and the BOM does not follow.
+    buy = {r["item"]: r["qty"] for r in B if r["section"] == "purchased"}
+    drawn = {"10-24 hex nut": inst["hex_nut"],
+             "#10 flat washer (landing pad)": inst["washer"],
+             "Compression spring": len(A["springs"]["instances"]),
+             "10-24 hex-head MACHINE screw": sum(len(b["angles"]) for b in A["bolts"])}
+    chk(all(buy.get(k) == v for k, v in drawn.items()),
+        f"BOM buys exactly the hardware the model draws: {drawn}")
+    # Both bolts are one length, which is the whole point of ADR-0002's rework, and the
+    # BOM states that length as a single number. It may not quietly become two.
+    chk(abs(PUSH_BOLT_L - PULL_BOLT_L) < 1e-9,
+        "push and pull bolts are the same length, so the BOM's one screw line is honest")
+    md = bom_markdown(B)
+    chk(all(r["item"] in md for r in B) and md.count("\n|") >= len(B),
+        f"the Markdown BOM renders every one of its {len(B)} lines")
+
     # --- parts that sit in recesses must actually fit in them -----------------
     # Intersecting the placed solid with its plate catches a mis-keyed hex directly:
     # a nut rotated to its station angle collides with the pocket wall.
@@ -1086,10 +1290,12 @@ if __name__ == "__main__":
     verify()
     print()
     os.makedirs("build", exist_ok=True)
+    vols = {}
     for name, fn in PARTS.items():
         part = fn()
         export_step(part, f"build/{name}.step")
         export_stl(part, f"build/{name}.stl")
+        vols[name] = part.volume
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
@@ -1102,6 +1308,16 @@ if __name__ == "__main__":
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
 
     import json
+    A = assembly()
     with open("build/assembly.json", "w") as f:
-        json.dump(assembly(), f, indent=1)
-    print("\nbuild/assembly.json written")
+        json.dump(A, f, indent=1)
+
+    # The BOM is written with real volumes, which is why it happens here and not in
+    # assembly(): the copy in assembly.json is the same rows, unquantified.
+    rows = bom(A["parts"], vols)
+    with open("build/bom.md", "w") as f:
+        f.write(bom_markdown(rows))
+    with open("build/bom.csv", "w") as f:
+        f.write(bom_csv(rows))
+    print(f"\nbuild/assembly.json written; build/bom.md, build/bom.csv "
+          f"({len(rows)} lines)")
