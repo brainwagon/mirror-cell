@@ -102,15 +102,20 @@ TUBE_REAR_OF_PLATE = inch(3.65)            # from the tube plate's MID-PLANE, re
 TUBE_FWD_OF_MIRROR = inch(2.0)             # above the mirror's front surface
 
 # --- 10-24 hardware ----------------------------------------------------------
-BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24
+BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24, AS PRINTED -- not as drawn
 # This stock clearance -- 0.166 mm per side, chosen for nothing but free fit -- is also
 # what sets the COLLIMATION RANGE, and it is the tightest limit in the adjustment chain.
 # The pull bolt's head is clamped flat on the mirror plate's floor, so the whole mirror
 # tilt shows up as bolt tilt in the tube plate's hole, guided over TUBE_PLATE_T less the
-# spring seat. As printed that is +/-1.42 deg (85 arcmin), +/-2.12 mm at one station --
-# against 2.51 deg the spring would allow. Ample: one knob turn is 42 arcmin. Derivation,
-# the as-drawn figures, and the tripwires are in spec section 7; TILT_MAX in verify() is a
-# separate and deliberately conservative envelope, not this number.
+# spring seat. That is +/-1.62 deg (97 arcmin), +/-2.42 mm at one station -- against 2.51
+# deg the spring would allow. Ample: one knob turn is 42 arcmin. Derivation and the
+# tripwires are in spec section 7; TILT_MAX in verify() is a separate and deliberately
+# conservative envelope, not this number.
+#
+# READ AS PRINTED, WHICH IS THE CHANGE. This used to be the diameter DRAWN, and the first
+# tube plate came off the bed with these holes at 0.19" -- the bolt's own major diameter,
+# zero clearance, no collimation range whatever (see HOLE_LOSS). Every hole for a bolt is
+# now drawn through drawn_hole(), so this number is what the bolt actually finds.
 #
 # The range the cell must PROVIDE, as against the range it happens to have. Half-angle,
 # and a REQUIREMENT rather than a measurement -- so it is typed here and the geometry is
@@ -149,6 +154,56 @@ INSERT_HOLE_D = 6.4    # D3, ruthex's recommended hole in the plastic
 INSERT_MIN_WALL = 2.6  # W, ruthex's minimum wall around a seated insert
 INSERT_L = 9.5         # L; the bore is deeper on purpose, see INSERT_DEPTH
 PRINT_SHRINK = 0.008   # measured on the fit coupon, 0.69-0.94% -- see TEST-COUPON.md
+
+# What a small round hole loses BEYOND linear shrink. MEASURED on the first tube plate,
+# 2026-07-31: holes drawn 5.159 came off the bed at 0.19" (4.83 mm). Shrink accounts for
+# 0.04 mm of that 0.33; the other 0.29 is this.
+#
+# It is an OFFSET, not a percentage, which is why it cannot ride on PRINT_SHRINK: the
+# slicer approximates the bore with chords inside the true circle, and the inner perimeter
+# is laid on a tight radius where it over-fills. Both cost roughly half an extrusion width
+# per side no matter how big the hole is.
+#
+# And it applies to ROUND holes only. The hex pockets on the same profile measured clean at
+# FIT_PRESS = 0.10, whose whole clearance is 0.02-0.03 mm -- had they lost 0.29 as well
+# they would have been a quarter-millimetre of interference and no nut would have entered,
+# let alone seated flat without whitening. Flat walls have neither chords nor tight radii.
+#
+# Rounded up from the measured 0.291. The error is asymmetric: a hole 0.01 mm too big
+# costs nothing anywhere in this design, and one 0.01 mm too small cost a 7-hour reprint.
+HOLE_LOSS = 0.30
+
+
+def drawn_hole(printed_d):
+    """Diameter to DRAW so a round hole comes off the bed at printed_d.
+
+    Every bolt hole in this model goes through here. The one that did not is the reason
+    the function exists -- see HOLE_LOSS.
+    """
+    return (printed_d + HOLE_LOSS) / (1 - PRINT_SHRINK)
+
+
+def printed_hole(drawn_d):
+    """Inverse of drawn_hole(): what a hole drawn at drawn_d measures once printed."""
+    return drawn_d * (1 - PRINT_SHRINK) - HOLE_LOSS
+
+
+# The tube plate's PULL hole is the only bolt hole in the cell that is held to
+# BOLT_CLEAR_D, because it is the only one doing mechanical work: the pull bolt leans in
+# it, and that lean is the collimation range. Everything else a bolt passes through is a
+# pass-through and is drawn frankly loose, because nothing is bought by keeping it tight:
+#
+#   - the tube plate's PUSH hole: the captured nut sets that bolt's axis and the landing
+#     pad stops its tip, so the hole locates nothing at all;
+#   - the mirror plate's pull bore: the head is captured in a hex pocket, which is what
+#     locates it -- and that bolt is fitted against curing silicone, so a hole you have to
+#     force it through is a defect at the worst possible moment;
+#   - the pull knob's through bore: it exists so tightening has somewhere to put the bolt.
+#
+# 0.39 mm per side, against 0.17 at the pull station. A bolt drops through it unaimed.
+BOLT_PASS_D = 5.6                          # as printed, again
+PULL_HOLE_D = drawn_hole(BOLT_CLEAR_D)     # ~5.50 drawn -> 5.16 printed
+PASS_HOLE_D = drawn_hole(BOLT_PASS_D)      # ~5.95 drawn -> 5.60 printed
 
 # --- landing pads ------------------------------------------------------------
 # A #4 washer, NOT a #10 one, and the bore is the whole point. This was a #10 washer --
@@ -344,12 +399,14 @@ def tube_plate():
 
     for a in STATIONS:
         # --- push bolt: clearance through + hex nut pocket OPENING FORWARD -----
-        p -= at(a, R_PUSH) * extrude(Circle(BOLT_CLEAR_D / 2), TUBE_PLATE_T)
+        # Pass-through: the nut below sets the axis, so this is drawn loose (BOLT_PASS_D).
+        p -= at(a, R_PUSH) * extrude(Circle(PASS_HOLE_D / 2), TUBE_PLATE_T)
         pocket_z = TUBE_PLATE_T - (NUT_T + 0.4)
         p -= at(a, R_PUSH, pocket_z) * hex_prism(NUT_AF, NUT_T + 0.4, fit=FIT_PRESS)
 
         # --- pull bolt: clearance through + spring seat on the FRONT face ------
-        p -= at(a, R_PULL) * extrude(Circle(BOLT_CLEAR_D / 2), TUBE_PLATE_T)
+        # THE hole: the bolt leans here, and the lean is the collimation range.
+        p -= at(a, R_PULL) * extrude(Circle(PULL_HOLE_D / 2), TUBE_PLATE_T)
         p -= at(a, R_PULL, TUBE_PLATE_T - SPRING_SEAT_DEPTH) * extrude(
             Circle(SPRING_SEAT_D / 2), SPRING_SEAT_DEPTH)
 
@@ -374,7 +431,9 @@ def mirror_plate():
         p -= at(a, R_PUSH) * extrude(Circle(PAD_OD / 2 + 0.15), PAD_T + 0.15)
 
         # --- pull bolt head captured from the FRONT, in compression ------------
-        p -= at(a, R_PULL) * extrude(Circle(BOLT_CLEAR_D / 2), MIRROR_PLATE_T)
+        # Pass-through: the hex pocket locates this bolt, and it goes in against curing
+        # silicone, so the bore is drawn loose on purpose (BOLT_PASS_D).
+        p -= at(a, R_PULL) * extrude(Circle(PASS_HOLE_D / 2), MIRROR_PLATE_T)
         well_z = MIRROR_PLATE_T - RTV_WELL_DEPTH
         p -= at(a, R_PULL, well_z) * extrude(Circle(RTV_WELL_D / 2), RTV_WELL_DEPTH)
         cap_z = well_z - CAP_T
@@ -456,7 +515,7 @@ def pull_knob():
     pocket_h = NUT_T - PULL_NUT_PROUD
     k -= Pos(0, 0, KNOB_T - pocket_h) * hex_prism(NUT_AF, pocket_h, fit=FIT_PRESS)
     # Through bore: tightening drives more bolt into the knob, and it has to go somewhere.
-    k -= extrude(Circle(BOLT_CLEAR_D / 2), KNOB_T)
+    k -= extrude(Circle(PASS_HOLE_D / 2), KNOB_T)
     return k
 
 
@@ -480,12 +539,14 @@ def pull_bolt_tilt(as_printed=True):
     because nothing registers the mirror plate laterally (spec section 11). Solved for t
     at the hole's width, by bisection because it does not inverse in closed form.
 
-    Defaults to AS PRINTED. Holes here are drawn nominal like every other dimension, so
-    the hole a bolt actually leans in is ~0.8% smaller than the one drawn, and it is the
-    printed one that has to do the job.
+    Defaults to AS PRINTED, and that default is the whole point of the function. The hole
+    is drawn at PULL_HOLE_D, oversize, so that it PRINTS at BOLT_CLEAR_D; feeding the drawn
+    figure in here would report a range the cell does not have. It reported 1.42 deg for a
+    plate that turned out to have none at all, because it modelled shrink and not
+    HOLE_LOSS -- the assertions downstream were sound, the hole model under them was not.
     """
     d = BOLT_MAJOR_D
-    D = BOLT_CLEAR_D * (1 - PRINT_SHRINK) if as_printed else BOLT_CLEAR_D
+    D = printed_hole(PULL_HOLE_D) if as_printed else PULL_HOLE_D
     L = TUBE_PLATE_T - SPRING_SEAT_DEPTH   # the seat is a Oe9.8 counterbore; it guides nothing
     if D <= d:
         return 0.0
@@ -1408,7 +1469,7 @@ def verify():
 
     # The push knob is blind behind its pocket -- probe the axis where a bore would be.
     depth = KNOB_T - (HEAD_T + 0.4)
-    probe = extrude(Circle(BOLT_CLEAR_D / 2), depth - 0.5)
+    probe = extrude(Circle(PASS_HOLE_D / 2), depth - 0.5)
     try:
         solid_behind = (probe & push_knob()).volume
     except Exception:
@@ -1709,6 +1770,37 @@ def verify():
     chk(worst[0] < TUBE_ID / 2 - 3.0,
         f"at {TILT_MAX:.0f} deg tilt the {worst[1]} swings to r={worst[0]:.2f}, "
         f"clearing the tube wall by {TUBE_ID/2 - worst[0]:.2f} mm")
+
+    # --- a bolt has to go through the hole at all --------------------------------
+    # The check that was missing, and the cheapest one in the file. Every downstream
+    # number about tilt assumed a bolt fits, and none of them said so; the first tube
+    # plate printed its pull holes at exactly the bolt's major diameter and the model was
+    # perfectly happy. Stated AS PRINTED against real hardware, which is the only version
+    # that could have caught it.
+    for nm, drawn in (("pull", PULL_HOLE_D), ("pass-through", PASS_HOLE_D)):
+        side = (printed_hole(drawn) - BOLT_MAJOR_D) / 2
+        chk(side > 0.10,
+            f"{nm} hole drawn {drawn:.2f} prints at {printed_hole(drawn):.2f} mm, "
+            f"{side:.3f} mm per side over a {BOLT_MAJOR_D:.2f} mm bolt")
+    # And the pass-through must be the looser of the two, or the names are a lie.
+    chk(PASS_HOLE_D > PULL_HOLE_D,
+        f"pass-through holes ({printed_hole(PASS_HOLE_D):.2f} printed) are looser than the "
+        f"pull station's ({printed_hole(PULL_HOLE_D):.2f}), which is the one doing work")
+
+    # Opening the pass-through bore eats into the floor the pull-bolt head bears on, which
+    # is a load path and did not look like one from the hole's side. The head must land on
+    # ABS at a pressure ABS can hold FOREVER -- spring tension never comes off -- so this is
+    # a creep limit, not a strength one, and 2 MPa is the conservative end of what ABS will
+    # take indefinitely at the temperature a black cell in a closed tube reaches.
+    head_floor = sqrt(3.0) / 2 * HEAD_AF ** 2 - pi * (printed_hole(PASS_HOLE_D) / 2) ** 2
+    seat_p = ((SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)) * SPRING_RATE) / head_floor
+    chk(seat_p < 2.0,
+        f"pull-bolt head bears on {head_floor:.1f} mm^2 of floor at {seat_p:.2f} MPa "
+        f"-- sustained, so the limit is creep, not yield")
+    # ...and the head must not simply fall through the bore it is supposed to sit on.
+    chk(HEAD_AF > printed_hole(PASS_HOLE_D) + 1.0,
+        f"hex head across flats {HEAD_AF:.2f} mm spans the {printed_hole(PASS_HOLE_D):.2f} "
+        f"mm bore beneath it")
 
     # --- and the mechanism's actual tilt budget, against both ends of its bracket
     # Three separate statements, because they fail for three different reasons.

@@ -28,7 +28,8 @@ parts it stands in for.
 | Ø12.0 × 1.5 counterbore | bottom left | printed cap disc into printed bore |
 | Two Ø8.24 / Ø8.54 pad recesses | **bed face** | the #4 washer landing pad |
 | Ø9.8 × 2.5 seat | bottom right | the spring drops in and does not bind |
-| Ø5.16 through hole | far right | the push bolt slides freely |
+| Ø5.50 through hole | far right | the **pull** hole: prints at Ø5.16, the collimation range |
+| Ø5.95 through hole | far right | the **pass-through** hole: prints at Ø5.60 |
 | The outline itself | — | **shrink gauge**: drawn at exactly 100.000 × 50.000 |
 
 The engraved number above each column is the clearance added to across-flats. The notched
@@ -109,9 +110,18 @@ question is functional.
    flush or slightly proud, never rock. If only the Ø8.54 one takes it, the first-layer
    squish is eating the recess: either dial the elephant-foot compensation or open
    `mirror_plate()`'s `+ 0.15` to what worked.
-7. **Spring seat and clearance hole.** Spring drops in, bolt slides freely through the
-   Ø5.16 hole with no thread drag. Both should pass without drama; if they do not, the
-   profile is over-extruding and everything above is suspect.
+7. **Spring seat and the two bolt holes. READ THIS RUNG.** It was skipped on the first
+   coupon and it is the one that mattered: the tube plate went to the bed with its pull
+   holes drawn nominal, and they printed at 0.19" — the bolt's own major diameter, zero
+   clearance, no collimation range at all. Both holes are now drawn oversize by
+   `HOLE_LOSS` so they *print* at Ø5.16 and Ø5.60.
+   - Spring drops into the seat and does not bind.
+   - A 10-24 slides through **both** holes under its own weight, with no thread drag.
+   - **Caliper the Ø5.50 rung.** It must come off the bed at 5.16 ± 0.05. Smaller means
+     `HOLE_LOSS` is low for this profile — raise it and reprint the coupon **before** the
+     tube plate, because the plate is 5.5–7 h and this coupon is twenty minutes.
+   A caliper on a Ø5 hole reads low; if you have a pin gauge or a 13/64" drill shank, use
+   that instead and trust it over the caliper.
 8. **Insert coupon.** Install a 10-24 insert in each horizontal bore with a soldering
    iron at 230–250 °C, going in slowly and square. Keep the bore that goes in square and
    holds; the difference between them is only 0.1 mm and heat-set inserts are forgiving,
@@ -204,7 +214,31 @@ about 2° of rotational slop, which the pull knob takes out anyway. **Confirm it
 before printing the mirror plate** — one 10-24 hex bolt settles it, and six of them are
 on the buy list regardless.
 
-Still unread on this coupon: cap disc, landing pads, spring seat, clearance hole.
+Still unread on this coupon: cap disc, landing pads, spring seat.
+
+## Results — 2026-07-31, the clearance hole, read off the tube plate instead
+
+**The rung above went unread, and the tube plate paid for it.** With the plate printed and
+being assembled, the push bolts had to be forced through their holes. Measured: **0.19"
+(4.83 mm)** against Ø5.159 drawn — the bolt's own major diameter, **zero clearance.**
+
+Linear shrink accounts for 0.04 mm of the 0.33 mm lost. The other **0.29 mm** is what a
+small round hole gives up to the slicer: chords cutting inside the true circle, and an
+inner perimeter laid on a tight radius where it over-fills. Both scale with extrusion
+width, not with diameter, so it is an offset — `HOLE_LOSS = 0.30`, rounded up because a
+hole 0.01 mm too big costs nothing here and one 0.01 mm too small cost a 7-hour reprint.
+
+**It applies to round holes only, and the same coupon proves it.** The hex pockets
+measured clean at `FIT_PRESS = 0.10`, whose entire clearance is 0.02–0.03 mm. Had they
+lost 0.29 mm as well they would have been a quarter-millimetre of interference and no nut
+would have entered, let alone seated flat with no whitening. Flat walls have neither
+chords nor tight radii. `PRINT_SHRINK` was never wrong; it was just not the whole story.
+
+The real cost was not the fit. It was the **collimation range**: `pull_bolt_tilt()`
+reported ±1.42° for a plate whose holes could not let a bolt lean at all. Every step of
+that arithmetic was correct and rested on an unstated assumption that a bolt fits the
+hole. `verify()` now asserts it — the cheapest check in the file, and the last one anybody
+thought to write.
 
 ## Results — 2026-07-29, insert coupon
 

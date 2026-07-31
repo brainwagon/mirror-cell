@@ -108,8 +108,13 @@ def misc_features():
            0.0, mc.PAD_T + 0.15) for j, pf in enumerate(PAD_FITS)],
         ("spring seat", 15.0, mc.SPRING_SEAT_D,
          COUPON_T - mc.SPRING_SEAT_DEPTH, COUPON_T),
-        # The push bolt must slide freely through the whole of its travel.
-        ("clearance hole", 35.0, mc.BOLT_CLEAR_D, 0.0, COUPON_T),
+        # The two bolt holes, drawn the way the plates draw them -- through drawn_hole(),
+        # oversize by HOLE_LOSS. This rung went unread on the first coupon and the tube
+        # plate printed its pull holes at the bolt's own major diameter, so read them:
+        # a 10-24 must slide through BOTH with no thread drag, and if the pull rung is
+        # snug then HOLE_LOSS is low for this profile and the plate must not be printed.
+        ("pull hole", 30.0, mc.PULL_HOLE_D, 0.0, COUPON_T),
+        ("pass-through hole", 42.0, mc.PASS_HOLE_D, 0.0, COUPON_T),
     ]
 
 
@@ -129,7 +134,7 @@ def fit_coupon():
             p -= Pos(x, y, COUPON_T - h) * mc.hex_prism(af, h, fit=f)
             # Through hole, so a fastener that turns out to be a press fit can be
             # pushed back out with a punch instead of being lost in the coupon.
-            p -= Pos(x, y) * extrude(Circle(mc.BOLT_CLEAR_D / 2), COUPON_T)
+            p -= Pos(x, y) * extrude(Circle(mc.PASS_HOLE_D / 2), COUPON_T)
         p = engrave(p, f"{f:.2f}", x, LABEL_Y)
 
     p = engrave(p, "N", -GAUGE_X / 2 + 3.4, NUT_Y)
@@ -313,7 +318,7 @@ def verify():
         # The punch-out hole under both pockets in the column.
         for row, y in (("nut", NUT_Y), ("head", HEAD_Y)):
             empty(Pos(col_x(i), y, COUPON_T / 2)
-                  * Cylinder(radius=mc.BOLT_CLEAR_D / 2 - 0.1, height=COUPON_T),
+                  * Cylinder(radius=mc.PASS_HOLE_D / 2 - 0.1, height=COUPON_T),
                   f"{row} pocket at fit {f:.2f} punches through")
 
     for label, x, d, z0, z1 in misc_features():

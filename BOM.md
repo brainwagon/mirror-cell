@@ -15,11 +15,11 @@ Both plates print rear-face-down with no supports.
 
 | Qty | Part | Slicer | Why it is like that |
 |---:|---|---|---|
-| 1 | `tube_plate` | 5 walls / 5 solid / 40% gyroid, 204.98 cc each | Rear face down, no supports. Do not raise the infill: it adds internal stress and INCREASES warping, which is this plate's main failure mode. |
-| 1 | `mirror_plate` | 6 walls / 8 solid / 40% gyroid, 166.45 cc each | Rear face down, posts up, no supports. The 8 bottom layers are not a nicety -- the pull-bolt bearing floor is only 3.45 mm and carries the mirror, and the landing-pad recess ceilings are bridged. |
+| 1 | `tube_plate` | 5 walls / 5 solid / 40% gyroid, 204.69 cc each | Rear face down, no supports. Do not raise the infill: it adds internal stress and INCREASES warping, which is this plate's main failure mode. |
+| 1 | `mirror_plate` | 6 walls / 8 solid / 40% gyroid, 166.38 cc each | Rear face down, posts up, no supports. The 8 bottom layers are not a nicety -- the pull-bolt bearing floor is only 3.45 mm and carries the mirror, and the landing-pad recess ceilings are bridged. |
 | 3 | `clip` | 5 walls / 6 solid / 100%, 1.76 cc each | Prints flat, which puts the 0.030" air-gap face on the bed as a clean surface instead of a supported overhang. Separate from the posts on purpose: printed integrally they leave a 142.4 mm opening for a 152.4 mm mirror. |
 | 3 | `push_knob` | 4 walls / 5 solid / 100%, 2.07 cc each | Blind hex pocket for a bolt HEAD. Pressing a head in is one-way -- there is no bore behind it to push against. |
-| 3 | `pull_knob` | 4 walls / 5 solid / 100%, 2.54 cc each | Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE FIRST and press a nut in: the pocket sits in a 2.2 mm wall, and the 0.10 mm fit was measured in a 6 mm plate. |
+| 3 | `pull_knob` | 4 walls / 5 solid / 100%, 2.47 cc each | Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE FIRST and press a nut in: the pocket sits in a 2.2 mm wall, and the 0.10 mm fit was measured in a 6 mm plate. |
 | 3 | `pocket_cap` | 100% infill, 0.16 cc each | A loose fit on purpose -- bedded in a spot of RTV, so there is no press fit to dial in. |
 | 3 | `shim` | 100% infill, 0.57 cc each | Assembly aid only. Sets the 0.0625" bond, then comes out at step 8. |
 
@@ -36,7 +36,7 @@ Both plates print rear-face-down with no supports.
 | 3 | 1" fender washer | 1" OD, #10 bore | OUTSIDE the tube, and not optional. Statically the screws see ~70 psi against cardboard good for 1000, but a 10 g transport knock puts ~700 psi on the hole edge: the holes go oval and collimation is gone every time you move the scope. A fender washer spreads it ~15x. |
 | 3 | M3 heat-set insert | 4 mm bore x 6 mm | Into the tops of the centering posts, for the clips. |
 | 3 | M3 cap screw | ~10 mm | Holds a clip. Never snug one down onto the glass -- the clips are drop-insurance standing 0.030" clear, not a clamp. |
-| 1 | Black ABS filament | 393 cc of part volume (0.41 kg of ABS) -- a 1 kg spool covers it with the brim and a reprint | ABS for the heat: a black cell in a closed tube sits in the sun. It also creeps under sustained tension, which is why every steel-to-plastic interface in this design is loaded in compression. |
+| 1 | Black ABS filament | 392 cc of part volume (0.41 kg of ABS) -- a 1 kg spool covers it with the brim and a reprint | ABS for the heat: a black cell in a closed tube sits in the sun. It also creeps under sustained tension, which is why every steel-to-plastic interface in this design is loaded in compression. |
 | 1 | RTV silicone | neutral-cure, small tube | Three dabs under the mirror at 0.0625", plus a spot under each pocket cap. NOT acetic-cure (the vinegar smell) near an aluminised surface. |
 
 ---

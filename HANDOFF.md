@@ -165,14 +165,20 @@ and the landing-pad recess ceilings are bridged.
 - **Clips are separate parts.** Integral, they leave a 142.4 mm opening for a 152.4 mm
   mirror — the mirror could never be installed. Do not "simplify" them back onto the posts.
 - **The mirror plate is laterally unregistered on purpose, and the collimation range
-  depends on it.** Tilt needs the plate to slide ~0.26 mm sideways: a pull bolt swings
-  0.52 mm at the tube plate over the full 1.42°, against 0.15 mm of slop per side, so the
+  depends on it.** Tilt needs the plate to slide ~0.30 mm sideways: a pull bolt swings
+  0.60 mm at the tube plate over the full 1.62°, against 0.17 mm of slop per side, so the
   plate does not tilt about a fixed point. Adding any pilot, boss or centring feature
   between the two plates — which reads as an obvious improvement — collapses the range,
   and **no assertion would catch it**. Spec §7 and §11 carry the numbers.
+- **Bolt holes are drawn oversize, and only bolt holes are.** `BOLT_CLEAR_D` is what the
+  hole must measure **once printed**; `drawn_hole()` adds `HOLE_LOSS` (0.30 mm, measured)
+  on top of shrink to get there. This is the one place the nominal-dimension convention
+  does not apply, and it cost a tube plate to find: drawn nominal, the pull holes printed
+  at 0.19" — the bolt's own major diameter, no collimation range whatever. Do not
+  "correct" a hole back to nominal, and do not add a new one with a bare `Circle(d/2)`.
 - **`TILT_MAX = 3.0` is not the mechanism's range.** It is a conservative envelope for the
-  tube-wall swing check. The real limit is ±1.42° as printed, computed by
-  `pull_bolt_tilt()` from `BOLT_CLEAR_D`. The two are deliberately not wired together —
+  tube-wall swing check. The real limit is ±1.62° as printed, computed by
+  `pull_bolt_tilt()` from `PULL_HOLE_D`. The two are deliberately not wired together —
   `verify()` asserts the budget stays *inside* the envelope rather than deriving one from
   the other, so a change that opens the range up fails instead of widening the swing check
   along with it. Three checks bracket it: `>= TILT_NEEDED`, `< TILT_MAX`, and below the

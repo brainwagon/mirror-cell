@@ -323,37 +323,50 @@ move the scope. A 1" fender washer spreads that ~15× and makes it a non-issue.
 diametral, 0.166 mm per side.** Nothing was added for angular play, and the range that
 falls out is what the cell has:
 
-| | as drawn | as printed (0.8% shrink) |
+| | as drawn | as printed |
 |---|---|---|
-| Pull-bolt hole | 5.159 mm | 5.118 mm |
-| Tilt, **half-angle** | 1.62° | **1.42° = 85 arcmin** |
-| Full swing between extremes | 3.24° | 2.84° |
-| Travel at one Station | ±2.42 mm | **±2.12 mm** |
-| Mirror edge | ±2.16 mm | ±1.89 mm |
+| Pull-bolt hole | 5.503 mm | **5.159 mm** |
+| Tilt, **half-angle** | 3.27° | **1.62° = 97 arcmin** |
+| Full swing between extremes | 6.54° | 3.24° |
+| Travel at one Station | ±4.90 mm | **±2.42 mm** |
+| Mirror edge | ±4.36 mm | ±2.16 mm |
+
+**The right-hand column is the design; the left is scrap the printer never sees.** That is
+the reverse of every other table here, and it is deliberate — `BOLT_CLEAR_D` is now a
+*printed* dimension, and the hole is drawn oversize through `drawn_hole()` to land on it.
+The as-drawn column is shown only so nobody re-derives the range from a caliper on the CAD.
 
 The **Pull** bolt is the one that tilts in the Tube plate: its head is clamped flat against
 the Mirror plate's 3.45 mm floor by spring tension, so its axis stays normal to the mirror
 and the full mirror tilt appears at the Tube plate hole. The guiding length is **11.7 mm**
 — the ½" plate less the 1.0 mm spring seat, which is Ø9.8 and constrains nothing. A
 cylinder of diameter *d* tilted by θ through a hole of length *L* needs `d/cos θ + L·tan θ`.
-Numbers computed at nominal print shrink; drawn values in the left column.
+
+> **This table read ±1.42° for a plate that had no range at all.** The first Tube plate
+> drew these holes at 5.159 and printed them at **0.19" — the bolt's own major diameter**,
+> zero clearance, discovered by hand during assembly. The model had applied linear shrink
+> and nothing else; a small round hole also loses ~0.29 mm diametral to chord
+> approximation and inner-perimeter over-extrusion (`HOLE_LOSS`, measured 2026-07-31),
+> which is an offset rather than a percentage and does not appear on the flat-walled hex
+> pockets. Every arithmetic step above was right and rested on an unstated assumption that
+> a bolt fits the hole. `verify()` now states it.
 
 The cone is symmetric, and all three bolts share the Mirror plate's normal, so every Pull
 bolt tilts by the same angle whichever way the plate leans — the limit does not depend on
 tilt direction. Nominal assembly sits at the centre of the cone. This is ample: one full
 turn of a Pull knob is 42 arcmin, so two turns spans everything, and real collimation is
 arcminutes. **The hole binds before the spring does** — the spring allows 3.76 mm at a
-Station (2.51°) and the hole stops you at 2.12 mm. That ordering is the safe one and is
+Station (2.51°) and the hole stops you at 2.42 mm. That ordering is the safe one and is
 asserted: jamming a bolt is a hard stop and harmless, while a slack spring at full tilt
 costs the Mirror plate its seat. It is the same argument as `thread_range < spring_range`.
 §11 records the whole bracket as a decision.
 
 > **The lateral freedom of the Mirror plate is load-bearing, and it does not look it.**
-> Over 1.42° a Pull bolt anchored at the Mirror plate swings **0.52 mm** sideways at the
-> Tube plate, against 0.15 mm of slop per side. The plate therefore does **not** tilt about
-> a fixed point: it translates ~0.26 mm sideways so the three bolts can centre. That works
+> Over 1.62° a Pull bolt anchored at the Mirror plate swings **0.60 mm** sideways at the
+> Tube plate, against 0.17 mm of slop per side. The plate therefore does **not** tilt about
+> a fixed point: it translates ~0.30 mm sideways so the three bolts can centre. That works
 > only because nothing laterally registers it — it floats on three springs, three Push tips
-> bearing on washers with 1.92 mm of radial room, and three Pull bolts. A 0.26 mm mirror
+> bearing on washers with 1.92 mm of radial room, and three Pull bolts. A 0.30 mm mirror
 > decentre is optically nothing at f/7.33. **Any future centring feature between the two
 > plates would collapse the tilt range, and no assertion would catch it.**
 
@@ -457,7 +470,7 @@ over the 0.125" first proposed.
 - **Spring preload is computed from geometry, never typed in** (§7). It is the product of
   free length, rate, gap *and seat depth*, and it has already been broken once by a change
   to the seat that looked unrelated.
-- **The collimation range is inherited from a stock #10 free-fit clearance** (§7): ±1.42°
+- **The collimation range is inherited from a stock #10 free-fit clearance** (§7): ±1.62°
   as printed, from 0.166 mm per side over an 11.7 mm guiding length. Nobody chose it, and
   it is the *tightest* limit in the adjustment chain — the spring would allow 2.51°.
   **Tripwires:** a thicker Tube plate, a deeper spring seat (which shortens the guide and
@@ -468,8 +481,17 @@ over the 0.125" first proposed.
   below the angle at which the spring goes slack. `TILT_MAX` stays a fixed 3° and is
   deliberately **not** derived from the holes, so that a change opening the range up fails
   the check instead of quietly widening the envelope with it.
+- **Round holes are drawn oversize; every other dimension is drawn nominal** (§7). The
+  nominal-dimension convention (§5) holds for outside profiles and for flat-walled pockets,
+  and it is *wrong* for small round holes, which lose a further ~0.29 mm of diameter to the
+  slicer. `HOLE_LOSS` carries that, `drawn_hole()` applies it, and `BOLT_CLEAR_D` is
+  therefore the only dimension in this design that means *as printed*. **Tripwires:** a new
+  bolt hole added with a bare `Circle(d/2)` rather than through `drawn_hole()` — the
+  fit-at-all assertion in `verify()` only covers the two named diameters; and a change of
+  nozzle, profile, or slicer, which moves `HOLE_LOSS` and is worth one coupon before
+  committing a plate to the bed.
 - **The Mirror plate is laterally unregistered, and the tilt range depends on it** (§7).
-  Tilting needs ~0.26 mm of sideways plate movement, because a Pull bolt swings 0.52 mm at
-  the Tube plate against 0.15 mm of slop per side. **Tripwire:** any pilot, boss, or
+  Tilting needs ~0.30 mm of sideways plate movement, because a Pull bolt swings 0.60 mm at
+  the Tube plate against 0.17 mm of slop per side. **Tripwire:** any pilot, boss, or
   centring feature between the two plates — the sort of thing that reads as an improvement
   — would collapse the tilt range, and nothing in the model would notice.
