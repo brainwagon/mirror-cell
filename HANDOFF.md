@@ -4,12 +4,12 @@ Written 2026-07-28. State of play, what is settled, what is not, and where the t
 Read [README.md](./README.md) for how to run things, [mirror-cell-spec.md](./mirror-cell-spec.md)
 for the design and its reasoning, [CONTEXT.md](./CONTEXT.md) for vocabulary.
 
-Under git as of 2026-07-28 (one commit, `826a4ab`, the verified model).
+Under git as of 2026-07-31 (16 commits; head `fa302cc`).
 
 ## Where it stands
 
-Design is complete and internally consistent. **166 assertions pass.** Nothing has been
-printed from this model.
+Design is complete and internally consistent. **171 assertions pass** (plus 103 in
+`test_coupon.py`). Two coupons have been printed and read; no cell part has.
 
 ```sh
 cd ~/mirror-cell
@@ -28,9 +28,9 @@ the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over
 | Part | Qty | Volume | Notes |
 |---|---|---|---|
 | tube_plate | 1 | 204.7 cc | biggest print, 5½–7 h (measured; see slicer settings) |
-| mirror_plate | 1 | 166.0 cc | posts + root chamfer integral |
+| mirror_plate | 1 | 166.4 cc | posts + root chamfer integral |
 | clip | 3 | 1.8 cc | separate — see traps |
-| push_knob | 3 | 1.9 cc | captures a hex head |
+| push_knob | 3 | 2.1 cc | captures a hex head |
 | pull_knob | 3 | 2.5 cc | captures a hex NUT — this is the ex-wing-nut |
 | pocket_cap | 3 | 0.16 cc | bedded in RTV, loose fit |
 | shim | 3 | 0.57 cc | assembly aid, removed after cure |
@@ -314,7 +314,7 @@ All nineteen of its features are genuinely cut — probed and confirmed — but 
 its fourteen checks touched the solid, and none asked whether any feature existed. A plain
 slab would have passed everything except the two bounding-box checks, which only see the
 outline. The head row had no solid check at all, which is the row that decides `FIT_SLIP`
-— still the one predicted rather than measured. `test_coupon.py` is now 101 checks.
+— still the one predicted rather than measured. `test_coupon.py` is now 103 checks.
 
 Two things in that fix are worth copying elsewhere:
 
