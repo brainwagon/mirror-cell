@@ -1,15 +1,23 @@
-"""6" mirror cell — build123d model.
+"""Newtonian mirror cell — build123d model.
 
-A one-off design for one telescope (6.000" x 1.000" mirror, 44" FL, 7.500" ID sonotube).
-Not parametric across apertures on purpose: a 3-point cell is only valid to ~8-10".
-See mirror-cell-spec.md for the reasoning and docs/adr/0001 for the support radius.
+Two telescopes from one file: a 6.000" x 1.000" mirror in a 7.500" ID sonotube (the
+original, printed and measured), and an 8.000" x 1.330" mirror in a 10.000" ID tube.
+Pick one with --aperture; everything below is derived from the CELLS entry.
+
+It does NOT generalise past those two. A 3-point cell is only valid to about 8-10", and
+the 0.75R support radius holds because both blanks are full-thickness at the same 6:1
+diameter-to-thickness ratio -- see docs/adr/0001 and docs/adr/0003.
 
 Every dimension lives in the PARAMETERS block. Model internals are mm; the design is
 dimensioned in inches, so inch() converts at the boundary.
 
-    python3 mirror_cell.py          # writes STEP + STL for every part into build/
+    python3 mirror_cell.py                # the 6" cell -> build/
+    python3 mirror_cell.py --aperture 8   # the 8" cell -> build-8/
+    python3 mirror_cell.py --check        # verify only; writes nothing
 """
 
+import os
+import sys
 from math import sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2, pi
 from pathlib import Path
 from build123d import *
@@ -21,15 +29,74 @@ def inch(x):
 
 # ---------------------------------------------------------------- PARAMETERS
 
+# --- which cell ---------------------------------------------------------------
+# Read from the command line at IMPORT time, because every constant below is a module
+# global computed from it. test_coupon.py imports this module and inherits the choice,
+# which is right: the coupons test hardware fits, and those are the same either way.
+def _aperture():
+    for i, a in enumerate(sys.argv):
+        if a == "--aperture" and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith("--aperture="):
+            return a.split("=", 1)[1]
+    return os.environ.get("MIRROR_CELL_APERTURE", "6")
+
+
+# What differs between the two cells, and NOTHING else does. Every other number in this
+# file is either derived from these or is hardware -- the 10-24 fasteners, the heat-set
+# inserts, the measured fits, the knobs and the 40 mm fan are identical in both cells,
+# which is the whole reason the 8" is a small change rather than a second design.
+#
+#   moving_n  the moving assembly in newtons, as a stated expectation. verify() computes
+#             it from the solids and checks it against this, so a change that quietly
+#             adds mass to the mirror plate fails instead of scaling the preload check
+#             along with it.
+#   brim      what the plate can actually be given on a 250 mm bed. This is a CONSTRAINT
+#             at 8", not a preference -- see the bed-fit check in verify().
+CELLS = {
+    6: dict(mirror_d=6.000, mirror_t=1.000, tube_id=7.500,
+            spring=dict(wire=0.9, od=9.0, free=20.0, rate_lb_in=13.0, solid=6.2),
+            moving_n=11.8, brim=10.0, build="build", bom="BOM.md"),
+    8: dict(mirror_d=8.000, mirror_t=1.330, tube_id=10.000,
+            # 2574 g of glass against 1089: the 6" cell's spring makes 1.92 lb/station
+            # and fails the preload check outright here. Answered with LENGTH rather than
+            # rate -- 25 mm free length gives 8.76 mm of compression instead of 3.76, so
+            # a spring no stiffer than the 6" one makes 2x preload and the knobs keep
+            # roughly the torque they had. See docs/adr/0003.
+            spring=dict(wire=1.0, od=9.0, free=25.0, rate_lb_in=12.0, solid=8.0),
+            moving_n=27.2, brim=5.0, build="build-8", bom="BOM-8.md"),
+}
+
+APERTURE = int(_aperture())
+assert APERTURE in CELLS, f"--aperture must be one of {sorted(CELLS)}, not {APERTURE}"
+CELL = CELLS[APERTURE]
+BUILD = CELL["build"]      # every written path hangs off this, so the two cells cannot
+BOM_PATH = CELL["bom"]     # overwrite each other's exports
+BRIM = CELL["brim"]
+
 # --- the telescope -----------------------------------------------------------
-MIRROR_D = inch(6.000)
-MIRROR_T = inch(1.000)
-TUBE_ID = inch(7.500)  # draw NOMINAL; ABS shrinkage supplies the fit (spec §5)
+MIRROR_D = inch(CELL["mirror_d"])
+MIRROR_T = inch(CELL["mirror_t"])
+TUBE_ID = inch(CELL["tube_id"])  # draw NOMINAL; ABS shrinkage supplies the fit (spec §5)
 
 # --- stations ----------------------------------------------------------------
 STATIONS = (90.0, 210.0, 330.0)
-R_PUSH = inch(1.500)  # push bolt circle
-R_PULL = inch(2.250)  # pull bolt circle == support point circle (ADR-0001)
+# The pull bolts ARE the support points (ADR-0001), so this circle is optical and scales
+# with the mirror: 0.75R, which is 2.250" at 6" and 3.000" at 8".
+#
+# Derived in INCHES and converted once, per the convention at the top of this file, rather
+# than as 0.375 * MIRROR_D. Both give the same circle, but the mm form lands a bit low in
+# the last place -- 57.14999999999999 against inch(2.250)'s 57.15 -- and that is enough to
+# change every exported byte of a plate that has already been printed. Doing the fraction
+# on the inch figure keeps the 6" cell's geometry bit-identical to what it was before the
+# 8" existed.
+R_PULL = inch(0.375 * CELL["mirror_d"])
+# The push circle does NOT scale. Its distance inboard of the pull circle is set by the
+# two knobs having to clear each other radially (ADR-0002), and the knobs are the same
+# size in both cells because the hardware inside them is. 0.750" gives the same 2.05 mm
+# gap at 8" that it gives at 6".
+KNOB_BUDGET_IN = 0.750
+R_PUSH = inch(0.375 * CELL["mirror_d"] - KNOB_BUDGET_IN)
 
 # --- axial stack (spec §4) ---------------------------------------------------
 TUBE_PLATE_T = inch(0.500)
@@ -52,13 +119,30 @@ TP_ARC_R = TUBE_ID / 2  # tube plate corner arcs
 # radially along each station ray (collimation bolt -> tube screw, both on the same ray),
 # so material between stations carries only torsion. Also opens the back of the cell for
 # mirror cooldown. Bounded below by the corner tabs, which hold the tube screws -- past
-# about 53 the flats eat into the insert bores.
-TP_FLAT_D = 60.0
-# Mirror plate corner arcs. Must contain the posts (outer face at 84.96) AND leave room
-# for the post root chamfer outboard, which is the more critical face -- see POST_FILLET.
-# Trimmed to 86.0 at one point; that capped the chamfer at 1.04 mm, so it went back to 88.
-MP_ARC_R = 88.0
-MP_FLAT_D = 65.0
+# about 53 (at 6") the flats eat into the insert bores, and verify() checks the tab.
+#
+# Held at the 6" cell's PROPORTION rather than its value, so the flats stay as deep
+# relative to the rim in both cells and the plate looks like the same part. Written as a
+# ratio against inch(7.5) so the 6" outline comes out at exactly 60.0 as drawn and
+# printed -- this plate exists in ABS and its outline must not move by a micron.
+TP_FLAT_D = 60.0 * (TUBE_ID / inch(7.500))
+
+# Post geometry lives here rather than with the rest of the mirror-plate detail because
+# the plate's OUTLINE is derived from it: the rim has to contain the posts.
+POST_IR = MIRROR_D / 2 + POST_GAP  # post inner face
+POST_T = 8.0  # thick enough to take an M3 insert with sound walls
+# Mirror plate corner arcs. Must contain the posts AND leave room for the post root
+# chamfer outboard, which is the more critical face -- see POST_FILLET. Trimmed to 86.0
+# at one point; that capped the chamfer at 1.04 mm, so it went back to a 3.04 mm rim.
+# Derived from the posts now, so it follows the mirror instead of being retyped: at 6"
+# this is exactly 88.0 again, at 8" it is 113.4.
+MP_RIM = 3.038
+# Rounded to the micron for the same reason R_PULL is converted from inches: the sum lands
+# a bit under 88.0 in the last place, and this plate's outline must not move at all
+# between the version that was checked and the version that gets printed. An outline
+# radius is drawn to a micron, never to a float's last bit.
+MP_ARC_R = round(POST_IR + POST_T + MP_RIM, 6)
+MP_FLAT_D = 65.0 * (MP_ARC_R / 88.0)
 # The prototype used 1.622". That collides with the 40 mm fan screw circle: holes on a
 # 32 mm square sit at r=22.63, leaving a 0.43 mm web to a 1.622" bore. 1.500" restores a
 # 2 mm web while still passing nearly the fan's full 38 mm throat.
@@ -232,10 +316,24 @@ BOLT_POINT_D = BOLT_MAJOR_D * 0.85
 PUSH_BOLT_L = inch(1.5)
 PULL_BOLT_L = inch(1.5)
 
-SPRING_OD = 9.0
-SPRING_WIRE_D = 0.9
-SPRING_FREE_L = 20.0
-SPRING_RATE = 13.0 * 4.4482 / 25.4   # N/mm; 13 lb/in, ~5.4 active coils at this geometry
+# The one purchased item that is NOT the same in both cells. 8" x 1.33" glass is 2574 g
+# against the 6" cell's 1089, and the preload has to follow it: three springs must hold
+# the moving assembly against its stop in any tube orientation, at about 2x its weight.
+#
+# Answered with FREE LENGTH rather than rate. The seat and the plate gap eat a fixed
+# 16.24 mm of any spring put here, so a longer one is compressed further and makes more
+# force at the same stiffness: 25 mm gives 8.76 mm of compression against 3.76, which
+# reaches 2x preload with a spring no stiffer than the 6" cell's. Buying the force as
+# rate instead would have meant ~27.5 lb/in and roughly double the knob torque, on a
+# fluted ABS knob that HANDOFF already calls this design's weakest point.
+SPRING_OD = CELL["spring"]["od"]
+SPRING_WIRE_D = CELL["spring"]["wire"]
+SPRING_FREE_L = CELL["spring"]["free"]
+SPRING_RATE_LB_IN = CELL["spring"]["rate_lb_in"]
+SPRING_RATE = SPRING_RATE_LB_IN * 4.4482 / 25.4   # N/mm
+# Coils stacked solid. Not derived -- no vendor at this price states an active coil count
+# (see HANDOFF), so it is read off the geometry and checked against the plate gap.
+SPRING_SOLID_H = CELL["spring"]["solid"]
 SPRING_SEAT_D = SPRING_OD + 0.8
 # 1.0, not 2.5. The seat lengthens the spring's span, so every millimetre of it is a
 # millimetre of preload thrown away: at 2.5 the cell made 1.16 lb per station against the
@@ -257,8 +355,7 @@ ABS_PACKING = 0.60
 HARDWARE_G = 20.0       # 3 bolts + 3 washers + 3 caps riding on the moving plate
 
 # --- mirror plate detail -----------------------------------------------------
-POST_IR = MIRROR_D / 2 + POST_GAP  # post inner face
-POST_T = 8.0  # thick enough to take an M3 insert with sound walls
+# POST_IR and POST_T are up in the outlines block: MP_ARC_R is derived from them.
 POST_SPAN = 30.0  # degrees
 # Chamfer at the post root. Capped on BOTH sides: outboard by the plate edge
 # (MP_ARC_R - post OD = 3.04 mm), inboard by the mirror's bond gap. Inboard now binds:
@@ -773,8 +870,8 @@ def downloads(parts):
     writes its own manifest, because this file must not import it (it imports this one)."""
     qty = {p["name"]: len(p["instances"]) for p in parts}
     return [{"name": n, "kind": "printed", "qty": qty.get(n, 1),
-             "step": f"build/{n}.step", "stl": f"build/{n}.stl",
-             "3mf": f"build/3mf/{n}.3mf"} for n in PARTS]
+             "step": f"{BUILD}/{n}.step", "stl": f"{BUILD}/{n}.stl",
+             "3mf": f"{BUILD}/3mf/{n}.3mf"} for n in PARTS]
 
 
 # ---------------------------------------------------------------- BILL OF MATERIALS
@@ -858,8 +955,8 @@ PRINT = {
     "clip": (Slice(100, walls=5, solid=6),
              "Prints flat, which puts the 0.030\" air-gap face on the bed as a clean "
              "surface instead of a supported overhang. Separate from the posts on "
-             "purpose: printed integrally they leave a 142.4 mm opening for a 152.4 mm "
-             "mirror."),
+             f"purpose: printed integrally they leave a {2 * CLIP_R_IN:.1f} mm opening "
+             f"for a {MIRROR_D:.1f} mm mirror."),
     "push_knob": (Slice(100, walls=4, solid=5),
                   "Blind hex pocket for a bolt HEAD. Pressing a head in is one-way -- "
                   "there is no bore behind it to push against."),
@@ -1099,12 +1196,16 @@ def purchased(total_cc=None):
                  "lands on plastic. The 0.125\" bore here is what the point rests on."},
         {"qty": 3, "item": "Compression spring",
          "spec": f"{SPRING_WIRE_D:g} mm wire x {SPRING_OD:g} mm OD x "
-                 f"{SPRING_FREE_L:g} mm free length (~13 lb/in)",
+                 f"{SPRING_FREE_L:g} mm free length (~{SPRING_RATE_LB_IN:g} lb/in)",
          "note": f"BUY BY GEOMETRY, NOT BY RATE -- rate follows k = Gd^4/8D^3n and wire "
                  f"diameter dominates at the fourth power. Do not buy a 'telescope "
-                 f"collimation spring kit': those compute to ~152 lb/in, ten times this, "
-                 f"and you would never turn the pull knobs. Gives {preload:.2f} lb "
-                 f"per station at the {PLATE_GAP / 25.4:g}\" gap."},
+                 f"collimation spring kit': those compute to ~152 lb/in, more than ten "
+                 f"times this, and you would never turn the pull knobs. Gives "
+                 f"{preload:.2f} lb per station at the {PLATE_GAP / 25.4:g}\" gap. The "
+                 f"FREE LENGTH is what carries the load here: the seat and the gap eat a "
+                 f"fixed {PLATE_GAP + SPRING_SEAT_DEPTH:.2f} mm of any spring fitted, so "
+                 f"a shorter one of the same rate arrives with less preload, not the "
+                 f"same preload."},
         {"qty": 3, "item": "10-24 heat-set insert",
          "spec": f"{INSERT_BORE_D:g} mm bore x {INSERT_DEPTH:g} mm",
          "note": "Radial, in the tube plate rim, at mid-thickness. These three screws "
@@ -1177,17 +1278,22 @@ def bom(parts, volumes=None):
 def bom_markdown(rows):
     tot = sum(r["qty"] for r in rows if r["section"] == "printed")
     out = [
-        "# Bill of materials — 6\" mirror cell",
+        f"# Bill of materials — {CELL['mirror_d']:g}\" mirror cell",
         "",
-        "Generated by `mirror_cell.py`, which writes it to `build/` and commits this copy",
-        "at the top level. Every number comes from the model — quantities are counted off",
-        "the assembly, dimensions read from the parameters — so **regenerate this file",
-        "rather than editing it**. `verify()` fails if the committed copy has gone stale.",
+        f"Generated by `mirror_cell.py --aperture {APERTURE}`, which writes it to",
+        f"`{BUILD}/` and commits this copy as `{BOM_PATH}`. Every number comes from the",
+        "model — quantities are counted off the assembly, dimensions read from the",
+        "parameters — so **regenerate this file rather than editing it**. `--check` fails",
+        "if the committed copy has gone stale.",
+        "",
+        f"For a {CELL['mirror_d']:g}\" × {CELL['mirror_t']:g}\" mirror in a "
+        f"{CELL['tube_id']:g}\" ID tube.",
         "",
         f"**{tot} printed pieces** from {len(PARTS)} distinct parts, plus the buy list below.",
         "",
         "Printer settings that apply to everything: 0.4 mm nozzle, 0.2 mm layers, ABS at",
-        "250–255 °C, bed 100–110 °C, **enclosure closed, part cooling 0–20 %**, 8–10 mm brim.",
+        f"250–255 °C, bed 100–110 °C, **enclosure closed, part cooling 0–20 %**, "
+        f"{BRIM:g} mm brim.",
         "Both plates print rear-face-down with no supports.",
         "",
         "## Printed parts",
@@ -1220,7 +1326,7 @@ def bom_csv(rows):
     return buf.getvalue()
 
 
-def bom_snapshot_stale(rows, path="BOM.md"):
+def bom_snapshot_stale(rows, path=None):
     """Which BOM rows the committed snapshot no longer matches.
 
     BOM.md is committed because build/ is gitignored, so it is the copy anyone reading the
@@ -1233,6 +1339,7 @@ def bom_snapshot_stale(rows, path="BOM.md"):
     --check can still refuse to.
     """
     import os
+    path = path or BOM_PATH
     if not os.path.exists(path):
         return [r["item"] for r in rows]
     lines = open(path, encoding="utf-8").read().splitlines()
@@ -1296,7 +1403,8 @@ def assembly():
         # The BOM travels in assembly.json too, so the viewer can say how many lines it
         # is offering without parsing the file it links to. The rows here carry no
         # volumes -- the exporter writes the quantified copy to build/bom.md.
-        "bom": {"md": "build/bom.md", "csv": "build/bom.csv", "rows": bom(parts)},
+        "bom": {"md": f"{BUILD}/bom.md", "csv": f"{BUILD}/bom.csv",
+                "rows": bom(parts)},
         # generated procedurally in the viewer from these numbers
         "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
         # the tube is a plain annulus, so the viewer draws it rather than loading an STL
@@ -1377,7 +1485,7 @@ def verify():
     # up by name, and a float bound to that name here shadows it for everything in between.
     # A check written in that gap silently intersected against a float, threw, and was
     # turned into a PASS by a blanket except. Do not reintroduce the short name.
-    free, solid_h = 20.0, 6.2  # 0.9 mm wire x 9 mm OD x 20 mm FL, ~5 active coils
+    free, solid_h = SPRING_FREE_L, SPRING_SOLID_H
     chk(free > PLATE_GAP, f"spring free length {free} > gap {PLATE_GAP:.2f} mm (stays preloaded)")
     chk(solid_h < PLATE_GAP - 3.0, f"solid height {solid_h} well below gap {PLATE_GAP:.2f} mm (no coil bind)")
     chk(SPRING_SEAT_D > SPRING_OD, "spring seat clears spring OD")
@@ -1460,8 +1568,9 @@ def verify():
     glass = pi * (MIRROR_D / 2) ** 2 * MIRROR_T * GLASS_RHO          # g
     printed = (mirror_plate().volume + 3 * clip().volume) * ABS_RHO * ABS_PACKING
     moving = (glass + printed + HARDWARE_G) * 9.81e-3                # N
-    chk(abs(moving - 11.8) < 1.5,
-        f"moving assembly {moving/4.4482:.2f} lb computed from solids "
+    chk(abs(moving - CELL["moving_n"]) < 1.5,
+        f"moving assembly {moving/4.4482:.2f} lb computed from solids, against the "
+        f"{CELL['moving_n']/4.4482:.2f} lb this cell states "
         f"(glass {glass:.0f} g + printed {printed:.0f} g + steel {HARDWARE_G:.0f} g)")
     chk(3 * preload > 1.5 * moving,
         f"spring preload {preload/4.4482:.2f} lb/station, {3*preload/4.4482:.2f} lb total "
@@ -1588,12 +1697,12 @@ def verify():
     chk(all(d["step"].lower().endswith(".step") and d["stl"].endswith(".stl")
             for d in D),
         "every download names a .step and a .stl")
-    chk(all(d["step"] == f"build/{d['name']}.step" for d in printed),
+    chk(all(d["step"] == f"{BUILD}/{d['name']}.step" for d in printed),
         "printed downloads point at the files the exporter actually writes")
     # The 3MF is the one the viewer offers for slicing, so the guarantee has to run both
     # ways: the panel cannot offer a file the exporter skips, and cannot silently omit one
     # it writes. Coupons carry their own manifest and are checked in test_coupon.py.
-    chk(all(d.get("3mf") == f"build/3mf/{d['name']}.3mf" for d in printed),
+    chk(all(d.get("3mf") == f"{BUILD}/3mf/{d['name']}.3mf" for d in printed),
         "printed downloads point at the 3MFs the exporter actually writes")
     chk(all(d["kind"] == "printed" for d in D),
         "every download is a printed part -- no purchased solid is in the design now")
@@ -1960,11 +2069,19 @@ def verify():
         z0 = fn().bounding_box().min.Z
         chk(abs(z0) < 1e-6, f"{name} rests on the bed (z_min = {z0:+.3f} mm)")
 
-    # --- everything fits the printer ------------------------------------------
+    # --- everything fits the printer, WITH ITS BRIM ---------------------------
+    # The brim is in this check because at 8" it is the binding constraint, not a
+    # nicety: the tube plate has to reach the tube wall to take its screws, so a 10"
+    # tube puts a 237 mm part on a 250 mm bed and there is no room for the 8-10 mm
+    # skirt the 6" cell prints with. That is the cell's tightest number and it belongs
+    # in an assertion, not in a slicer note nobody reads until the plate is on the bed.
+    # BRIM is what the cell can actually be given; if a part grows, this fails.
     for name, fn in PARTS.items():
         s = fn().bounding_box().size
-        chk(s.X < BED[0] and s.Y < BED[1] and s.Z < BED[2],
-            f"{name} fits bed: {s.X:.0f} x {s.Y:.0f} x {s.Z:.0f} mm")
+        chk(s.X + 2 * BRIM < BED[0] and s.Y + 2 * BRIM < BED[1] and s.Z < BED[2],
+            f"{name} fits bed with its {BRIM:g} mm brim: "
+            f"{s.X + 2*BRIM:.0f} x {s.Y + 2*BRIM:.0f} x {s.Z:.0f} mm in "
+            f"{BED[0]:.0f} x {BED[1]:.0f} x {BED[2]:.0f}")
 
     for good, msg in ok:
         print(f"  {'PASS' if good else 'FAIL'}  {msg}")
@@ -1982,14 +2099,14 @@ if __name__ == "__main__":
     verify()
     print()
     if not check_only:
-        os.makedirs("build", exist_ok=True)
+        os.makedirs(BUILD, exist_ok=True)
     vols = {}
     for name, fn in PARTS.items():
         part = fn()
         if not check_only:
-            export_step(part, f"build/{name}.step")
-            export_stl(part, f"build/{name}.stl")
-            write_3mf(part, Path(f"build/3mf/{name}.3mf"), PRINT[name][0],
+            export_step(part, f"{BUILD}/{name}.step")
+            export_stl(part, f"{BUILD}/{name}.stl")
+            write_3mf(part, Path(f"{BUILD}/3mf/{name}.3mf"), PRINT[name][0],
                       part_number=name)
         vols[name] = part.volume
         bb = part.bounding_box()
@@ -1999,7 +2116,7 @@ if __name__ == "__main__":
     for name, fn in HARDWARE.items():
         part = fn()
         if not check_only:
-            export_stl(part, f"build/{name}.stl")
+            export_stl(part, f"{BUILD}/{name}.stl")
         bb = part.bounding_box()
         print(f"{name:14s} (purchased)          "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
@@ -2017,27 +2134,28 @@ if __name__ == "__main__":
         # having committed the model without rerunning it -- and that is a hard failure.
         if stale:
             raise SystemExit(
-                f"\nBOM.md is STALE and --check writes nothing.\n"
+                f"\n{BOM_PATH} is STALE and --check writes nothing.\n"
                 f"  rows the snapshot no longer matches: {stale}\n"
-                f"  fix: rerun `python3 mirror_cell.py` and commit BOM.md")
-        print("\n--check: all checks passed and BOM.md is current; nothing written")
+                f"  fix: rerun `python3 mirror_cell.py --aperture {APERTURE}` "
+                f"and commit {BOM_PATH}")
+        print(f"\n--check: all checks passed and {BOM_PATH} is current; nothing written")
     else:
-        with open("build/assembly.json", "w", encoding="utf-8") as f:
+        with open(f"{BUILD}/assembly.json", "w", encoding="utf-8") as f:
             json.dump(A, f, indent=1)
-        with open("build/bom.md", "w", encoding="utf-8") as f:
+        with open(f"{BUILD}/bom.md", "w", encoding="utf-8") as f:
             f.write(md)
-        with open("build/bom.csv", "w", encoding="utf-8") as f:
+        with open(f"{BUILD}/bom.csv", "w", encoding="utf-8") as f:
             f.write(bom_csv(rows))
         # ...and a snapshot at the top level, which is the one that gets committed:
         # build/ is gitignored, so without this the repo has no readable buy list at all.
-        with open("BOM.md", "w", encoding="utf-8") as f:
+        with open(BOM_PATH, "w", encoding="utf-8") as f:
             f.write(md)
         # Round-trip the 3MFs: reopen what was actually written and compare it to what the
         # model meant. verify() checked the DATA; this checks the ARTIFACT, which is the
         # only thing that catches an injection that silently did not happen -- seven files
         # with no settings in them look exactly like seven correct ones from the outside.
         for name in PARTS:
-            p = Path(f"build/3mf/{name}.3mf")
+            p = Path(f"{BUILD}/3mf/{name}.3mf")
             want = PRINT[name][0].config()
             got = read_3mf_config(p)
             if got != want:
@@ -2085,14 +2203,14 @@ if __name__ == "__main__":
                 if ov != overrides:
                     raise SystemExit(f"\n{p}: modifier {nm} carries {ov}, "
                                      f"expected {overrides}")
-        print(f"build/3mf/ written; {len(PARTS)} parts, settings and "
+        print(f"{BUILD}/3mf/ written; {len(PARTS)} parts, settings and "
               f"{len(STATIONS)} modifiers verified in the files")
 
-        print(f"\nbuild/assembly.json written; build/bom.md, build/bom.csv and the "
-              f"committed BOM.md ({len(rows)} lines)")
+        print(f"\n{BUILD}/assembly.json written; {BUILD}/bom.md, {BUILD}/bom.csv and "
+              f"the committed {BOM_PATH} ({len(rows)} lines)")
         # Reported AFTER the write, so this is news rather than an obstacle: the file has
         # already been brought up to date and the line just says what moved.
         if stale:
-            print(f"  BOM.md updated -- rows that changed: {stale}")
+            print(f"  {BOM_PATH} updated -- rows that changed: {stale}")
             print(f"  commit it; `python3 mirror_cell.py --check` is what refuses a "
                   f"stale snapshot.")

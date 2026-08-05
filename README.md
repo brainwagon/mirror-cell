@@ -1,17 +1,27 @@
-# 6" Mirror Cell
+# Mirror Cell — 6" and 8"
 
-A 3-point primary mirror cell for a 6" f/7.33 Newtonian — 3D printed in black ABS,
-assembled with 10-24 hardware. Designed for one specific telescope; see
-[mirror-cell-spec.md](./mirror-cell-spec.md) for why it is deliberately not parametric.
+A 3-point primary mirror cell — 3D printed in black ABS, assembled with 10-24 hardware.
+Two telescopes are built from one model:
+
+| | Mirror | Tube ID | Build | Buy list |
+|---|---|---|---|---|
+| **6"** (default) | 6.000" × 1.000", f/7.33 | 7.500" | `build/` | `BOM.md` |
+| **8"** | 8.000" × 1.330" | 10.000" | `build-8/` | `BOM-8.md` |
+
+The 6" is the original and the only one that has been printed and measured. The 8" is the
+same cell with three numbers changed — see
+[ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md) for what
+scales, what deliberately does not, and why it stops at two entries.
 
 | File | Purpose |
 |---|---|
 | `HANDOFF.md` | **Start here when resuming** — state, blockers, and the traps |
-| `BOM.md` | The buy list, annotated. Generated — `verify()` fails if it goes stale |
+| `BOM.md`, `BOM-8.md` | The buy lists, annotated. Generated — `--check` fails if one goes stale |
 | `CONTEXT.md` | Glossary. Tube plate, Mirror plate, Station, Support point, Silicone dab, … |
-| `mirror-cell-spec.md` | The design, its numbers, and the reasoning behind them |
+| `mirror-cell-spec.md` | The design, its numbers, and the reasoning behind them (written for the 6") |
 | `docs/adr/0001-…md` | Why the support points sit at 0.75R rather than the PLOP optimum |
 | `docs/adr/0002-…md` | Why both rear controls are printed knobs clearing each other radially |
+| `docs/adr/0003-…md` | Why the 8" cell is a config entry rather than a second design |
 | `mirror_cell.py` | The model. All dimensions are named variables at the top |
 | `test_coupon.py` | The ABS test coupons — the print that dials `FIT` |
 | `TEST-COUPON.md` | How to print them, how to read them, where the answer goes |
@@ -21,22 +31,25 @@ assembled with 10-24 hardware. Designed for one specific telescope; see
 ## Build the geometry
 
 ```sh
-python3 mirror_cell.py
+python3 mirror_cell.py                # the 6" cell  -> build/,   BOM.md
+python3 mirror_cell.py --aperture 8   # the 8" cell  -> build-8/, BOM-8.md
 ```
 
-Runs 166 assertions, then writes `build/*.step`, `build/*.stl`, `build/3mf/*.3mf`
-(geometry **and** that part's slicer settings), `build/assembly.json`
-and the bill of materials — `build/bom.md`, `build/bom.csv`, and the committed snapshot
-`BOM.md` (`build/` is gitignored, so that snapshot is the copy the repo carries). If a
-BOM row changed, the snapshot is rewritten and the run says which rows moved — **commit
-it**. To check without writing anything:
+Runs 171 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
+(geometry **and** that part's slicer settings), `assembly.json` and the bill of materials
+— `bom.md`, `bom.csv`, and the committed snapshot at the top level (the build directories
+are gitignored, so those snapshots are the copies the repo carries). If a BOM row changed,
+the snapshot is rewritten and the run says which rows moved — **commit it**. To check
+without writing anything:
 
 ```sh
 python3 mirror_cell.py --check
+python3 mirror_cell.py --aperture 8 --check
 ```
 
-which verifies and then *refuses* a stale `BOM.md` instead of repairing it. That is the
-CI entry point, and the one to run on a fresh checkout.
+which verifies and then *refuses* a stale snapshot instead of repairing it. That is the CI
+entry point, and the one to run on a fresh checkout — **run it for both apertures**, since
+each one only checks the cell it was asked for.
 The assertions encode the spec — the three gaps that must never close, both fastener
 bearing floors, assembly clearances, spring travel, post placement, and printer bed fit.
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were
@@ -51,8 +64,13 @@ The page fetches STLs, so it needs to be served over HTTP — `file://` will not
 
 ```sh
 python3 -m http.server 8018
-# then open http://localhost:8018/
+# then open http://localhost:8018/          the 6" cell
+#           http://localhost:8018/?cell=8   the 8" cell
 ```
+
+`?cell=8` reads `build-8/` instead of `build/`, so run the exporter for that aperture
+first or the page has nothing to fetch. The coupons are shared and always come from
+`build/`.
 
 Two modes:
 
@@ -107,9 +125,10 @@ dependency, and no STL loader — `parseSTL` reads build123d's binary STLs direc
 
 ## One source of truth
 
-Every position in the viewer comes from `build/assembly.json`, which `mirror_cell.py`
-writes from the same variables that cut the geometry. No dimension is typed into the
-JavaScript, so the picture cannot drift away from the parts.
+Every position in the viewer comes from the selected cell's `assembly.json`, which
+`mirror_cell.py` writes from the same variables that cut the geometry. No dimension is
+typed into the JavaScript, so the picture cannot drift away from the parts — and the
+same page draws either cell without knowing anything about apertures.
 
 ## Status
 
@@ -130,3 +149,8 @@ both controls are printed knobs that clear each other radially, the wing nut is 
 all six bolts are 10-24 × 1½″ machine screws. Print one pull knob and press a nut into its
 2.2 mm wall before committing to six. Plate and knob outlines are functional but
 aesthetically provisional.
+
+**Nothing of the 8″ cell has been printed at all.** Its 171 checks pass and it shares the
+6″ cell's measured fits, so the coupon work carries over — but its tube plate is
+237 × 207 mm on a 250 mm bed with only a 5 mm brim, and warp on a plate that size is the
+one risk no assertion covers. Print that plate first.

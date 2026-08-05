@@ -261,11 +261,19 @@ const LABEL = {
   pocket_cap: 'Pocket caps', shim: 'Shims',
   hex_nut: 'Hex nuts', washer: 'Landing pads', mirror: 'Mirror',
   springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts',
-  fan: 'Fan (40 mm, stand-in)', tube: 'Tube (7.75″ OD stub)' };
+  fan: 'Fan (40 mm, stand-in)', tube: 'Tube (stub)' };
+
+// Which cell to show: ?cell=8 for the 8" one. The exporter writes each cell to its own
+// directory so they cannot overwrite each other, and this is the matching end of that.
+const CELL = new URLSearchParams(location.search).get('cell') || '6';
+const BUILD = CELL === '6' ? 'build' : 'build-' + CELL;
 
 async function build() {
-  const A = await (await fetch('build/assembly.json')).json();
+  const A = await (await fetch(BUILD + '/assembly.json')).json();
   SEQ = A.sequence;
+  // Read off the model rather than typed, so the label follows whichever cell is loaded.
+  LABEL.tube = `Tube (${(A.tube.od / 25.4).toFixed(2)}″ OD stub)`;
+  LABEL.mirror = `Mirror (${(A.mirror.d / 25.4).toFixed(0)}″)`;
 
   // The coupons are a separate build step and may not have been run; their absence is
   // normal, not an error, so it must not take the page down with it.
@@ -276,7 +284,7 @@ async function build() {
   } catch (e) { /* not built yet */ }
 
   await Promise.all(A.parts.map(async p => {
-    const geo = parseSTL(await (await fetch('build/' + p.stl)).arrayBuffer());
+    const geo = parseSTL(await (await fetch(BUILD + '/' + p.stl)).arrayBuffer());
     const mat = p.group === 'hardware' ? steel : absMat(p.color);
     item(p.name, LABEL[p.name] || p.name, p.color, p.explode, p.context);
     for (const inst of p.instances) {

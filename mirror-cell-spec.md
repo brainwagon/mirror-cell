@@ -1,8 +1,17 @@
 # 6" Mirror Cell — Design Spec
 
-*Derived from a grilling session, 2026-07-28. This is a **one-off** design for one specific
+*Derived from a grilling session, 2026-07-28. This is the design for one specific
 telescope: the 6" Newtonian originally built in the 1970s, being rebuilt with a 3D-printed
-cell. It is deliberately **not** parametric across apertures — see §9.*
+cell. Every number below is that cell's.*
+
+*An **8.000" × 1.330"** variant was added later and is built from the same model by
+`--aperture 8`. It is the same architecture, the same hardware and the same assertions,
+with the mirror, tube, bolt circles, plate outlines and spring following from three
+numbers — the derivation and its limits are in
+[ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md), and that is
+where to look before assuming any figure on this page applies to it. What still holds for
+both: §3 architecture, §5 the nominal-dimension convention, §6 compression everywhere, and
+every tripwire in §11.*
 
 Terminology is defined in [CONTEXT.md](./CONTEXT.md) and used strictly here.
 
@@ -25,8 +34,11 @@ cell at all. This project fills that hole.
 collimation, and the tube interface.
 
 **Out of scope:** optical design (settled — 44" f/7.33); the mount (that's `~/dob`); any
-aperture other than 6". A 3-point cell is only valid to roughly 8–10"; larger mirrors need
-6- or 9-point flotation, which is a different part family.
+aperture beyond the two the model builds. A 3-point cell is only valid to roughly 8–10",
+so the 8" variant sits at the top of the range and **nothing larger belongs in this file** —
+bigger mirrors need 6- or 9-point flotation, which is a different part family. A thin blank
+is out of scope at *any* diameter: both cells' support radius depends on a full-thickness
+mirror (§11, ADR-0001, ADR-0003).
 
 ## 3. Architecture
 
@@ -459,7 +471,10 @@ over the 0.125" first proposed.
   collimation stability is no longer predicted.
 - **Support radius chosen mechanically, not optically** ([ADR-0001](./docs/adr/0001-support-points-coaxial-with-pull-bolts.md)).
   Valid only because the mirror is full-thickness. **Tripwire:** a thin or larger blank
-  makes support placement matter again, and this design should not be reused for one.
+  makes support placement matter again, and this design should not be reused for one. The
+  8" cell clears this tripwire *only* because its blank is 1.330" — the same 6:1 ratio as
+  the 6" one, so it deflects 1.33× as much, which is still nothing. An 8" mirror 1" thick
+  would not clear it ([ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md)).
 - **Nominal-dimension convention against the tube** (§5), confirmed by a real test fit —
   not by calculation. Re-verify if the filament or printer changes.
 - **Rear clearance is radial, not axial** ([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)).

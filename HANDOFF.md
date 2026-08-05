@@ -8,15 +8,41 @@ Under git as of 2026-07-31 (16 commits; head `fa302cc`).
 
 ## Where it stands
 
-Design is complete and internally consistent. **171 assertions pass** (plus 103 in
-`test_coupon.py`). Two coupons have been printed and read; no cell part has.
+Design is complete and internally consistent. **171 assertions pass for each cell** (plus
+103 in `test_coupon.py`). Two coupons have been printed and read; no cell part has, in
+either aperture.
 
 ```sh
 cd ~/mirror-cell
 python3 mirror_cell.py            # verify + export build/*.step, *.stl, assembly.json, bom.md
 python3 mirror_cell.py --check    # verify only; refuses a stale BOM.md, writes nothing
-python3 -m http.server 8018       # then open http://localhost:8018/
+python3 mirror_cell.py --aperture 8 --check   # the same, for the 8" cell
+python3 -m http.server 8018       # then open http://localhost:8018/  (?cell=8 for the 8")
 ```
+
+## There are two cells now
+
+`--aperture 8` builds an **8.000" × 1.330" mirror in a 10.000" ID tube** from the same
+file, into `build-8/` and `BOM-8.md`. It is the same cell with three numbers changed:
+[ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md) has the
+full derivation. Both cells pass all 171 checks. **Everything below this section is about
+the 6" cell** unless it says otherwise — it is the one that has been printed and measured,
+and the 8" inherits all of its measured fits because every fastener is identical.
+
+Three things are worth knowing before touching either:
+
+- **`CELLS` at the top of `mirror_cell.py` is the only place the two differ.** Mirror
+  diameter, mirror thickness, tube ID, the spring, the expected moving mass and the brim.
+  Everything else is derived or is hardware. Do not add a per-aperture number anywhere
+  else in the file.
+- **The 8" spring is a different part** — 1.0 mm wire × 9 mm OD × **25 mm** free length,
+  ~12 lb/in, giving 4.14 lb per station. The 6" spring fails the preload check at 8" and
+  should: the glass goes 1089 → 2574 g. The force is bought with length rather than rate
+  so the knob torque stays where it was.
+- **The 8" tube plate is 237 × 207 mm on a 250 mm bed.** It fits with a **5 mm** brim and
+  not the 8–10 mm this page recommends everywhere else. That is now in the bed-fit
+  assertion rather than a note. Warp on a plate that size is the one risk nothing in
+  `verify()` can catch — see the traps.
 
 **The tube-screw inserts are ruthex RX-10-24x9.5**, and the model now carries their
 published numbers (`INSERT_OD`, `INSERT_HOLE_D`, `INSERT_MIN_WALL`, `INSERT_L`) because
@@ -157,6 +183,18 @@ and the landing-pad recess ceilings are bridged.
 
 ## Traps — things that look wrong but are deliberate
 
+- **The push bolt circle does NOT scale with the mirror, and must not be "fixed".** At 8"
+  the pull circle moves out to 3.000" (0.75R, optical) but the push circle follows it at
+  a fixed 0.750" inboard, because that distance is set by the two knobs clearing each
+  other radially (ADR-0002) and the knobs are identical in both cells. Scaling it
+  proportionally *looks* more consistent and throws away the whole clearance budget for
+  nothing. `verify()` reports the same 2.05 mm gap in both cells — if that number ever
+  moves, this is why.
+- **The 8" tube plate gets LESS brim than the 6" one, not more.** 5 mm against 8–10, and
+  it is the bigger, warpier part. It is not an oversight: 237 mm of plate on a 250 mm bed
+  leaves 6.5 mm a side and there is nowhere else to take it from. The plate has to reach
+  the tube wall to take its screws, so it cannot shrink. **This is the 8" cell's one real
+  risk and no assertion covers it** — a warped plate passes every check in the file.
 - **The landing pads are #4 washers under #10 bolts.** Not a typo, and not an upsizing
   opportunity. A #10 washer's bore *is* clearance for a #10 bolt, so the push-bolt tip
   drops through it onto plastic and the pad does nothing — that was the real state of
@@ -252,6 +290,19 @@ everything in the first group below resolves with the coupon in hand plus one bo
   past nominal instead of +3.41 mm — one collimation and no second chance. 1⅝" pull bolts
   restore it but break the one-length rule; 1¾" overshoots and the spring goes slack
   first. All three were run. Do not thicken it without re-opening ADR-0002.
+
+**Open on the 8" cell specifically:**
+
+- **Nothing has been printed.** The measured fits carry over (identical hardware), so the
+  coupon work is not repeated — but the tube plate's warp behaviour at 237 mm is unknown
+  and is the thing to find out first. Print that plate before buying anything else.
+- **The 25 mm spring has not been sourced.** ~12 lb/in at 1.0 mm wire × 9 mm OD × 25 mm
+  free length. Same caveat as the 6" cell's: no vendor at this price states an active coil
+  count, so the rate is inferred and `SPRING_SOLID_H = 8.0` is an estimate checked only
+  against the plate gap, where it has 4 mm of margin.
+- **The mirror plate's centre bore is still 56 mm**, which was sized for the 6" cell and
+  is now proportionally small for a mirror needing more cooling. Opening it is free
+  airflow — `verify()` allows up to ~100 mm before it reaches the landing-pad recesses.
 
 **Still open, non-blocking:**
 
