@@ -54,7 +54,10 @@ def _aperture():
 #   brim      what the plate can actually be given on a 250 mm bed. This is a CONSTRAINT
 #             at 8", not a preference -- see the bed-fit check in verify().
 CELLS = {
-    6: dict(mirror_d=6.000, mirror_t=1.000, tube_id=7.500,
+    # focal_in is DISPLAY ONLY -- nothing in the cell depends on focal length, and it is
+    # optional for exactly that reason: the 8" blank's is not known and inventing one to
+    # fill the field would put a number on the page that no part was drawn from.
+    6: dict(mirror_d=6.000, mirror_t=1.000, tube_id=7.500, focal_in=44.0,
             spring=dict(wire=0.9, od=9.0, free=20.0, rate_lb_in=13.0, solid=6.2),
             moving_n=11.8, brim=10.0, build="build", bom="BOM.md"),
     8: dict(mirror_d=8.000, mirror_t=1.330, tube_id=10.000,
@@ -1405,8 +1408,11 @@ def assembly():
         # volumes -- the exporter writes the quantified copy to build/bom.md.
         "bom": {"md": f"{BUILD}/bom.md", "csv": f"{BUILD}/bom.csv",
                 "rows": bom(parts)},
-        # generated procedurally in the viewer from these numbers
-        "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230]},
+        # generated procedurally in the viewer from these numbers. "focal" is null when
+        # the cell does not state one, and the page then omits the f-ratio rather than
+        # showing a made-up one.
+        "mirror": {"d": MIRROR_D, "t": MIRROR_T, "z": Z_MIRROR, "explode": [0, 0, 230],
+                   "focal": inch(CELL["focal_in"]) if CELL.get("focal_in") else None},
         # the tube is a plain annulus, so the viewer draws it rather than loading an STL
         "tube": {"id": TUBE_ID, "od": TUBE_OD, "z0": TUBE_Z0, "z1": TUBE_Z1,
                  "explode": [0, 0, -330]},

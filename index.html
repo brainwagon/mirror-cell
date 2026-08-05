@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>6" Mirror Cell — Assembly Viewer</title>
+<title>Mirror Cell — Assembly Viewer</title>
 <style>
   :root { --bg:#14171c; --panel:#1c2027; --line:#2c323c; --ink:#dfe4ec; --dim:#8b95a5;
           --hi:#e0a458; --warn:#e07a5f; }
@@ -81,8 +81,10 @@
 <div id="view"></div>
 
 <div id="panel">
-  <h1>6" Mirror Cell</h1>
-  <div class="sub">6.000&Prime; &times; 1.000&Prime; mirror &middot; 44&Prime; f/7.33</div>
+  <!-- Filled in from assembly.json once it loads: this page draws whichever cell it was
+       pointed at, so the heading cannot be typed in here. -->
+  <h1 id="title">Mirror Cell</h1>
+  <div class="sub" id="subtitle">&nbsp;</div>
 
   <div class="tabs">
     <button id="tabBuild" aria-pressed="true">Build it</button>
@@ -123,18 +125,20 @@
 
   <div class="note">Drag to orbit &middot; scroll to zoom &middot; right-drag to pan
     &middot; &larr;/&rarr; to step. Everything here is read from
-    <code>build/assembly.json</code>, written by <code>mirror_cell.py</code> &mdash; the
-    instructions, the geometry, the bill of materials and the download list come from the
-    same source. Coupons
-    come from <code>build/coupons.json</code> (<code>test_coupon.py</code>).</div>
+    <code id="srcPath">assembly.json</code>, written by <code>mirror_cell.py</code>
+    &mdash; the instructions, the geometry, the bill of materials, the heading above and
+    the download list all come from the same source. Add
+    <code>?cell=8</code> for the 8&Prime; cell. Coupons are shared by both and come from
+    <code>build/coupons.json</code> (<code>test_coupon.py</code>).</div>
 </div>
 
 <div id="err"><div>
   <h1>Could not load the model.</h1>
   <p style="color:var(--dim);max-width:34em">This page fetches STLs, so it must be served
-  over HTTP &mdash; <code>file://</code> will not work &mdash; and <code>build/</code>
-  must exist.</p>
+  over HTTP &mdash; <code>file://</code> will not work &mdash; and the build directory
+  for the selected cell must exist.</p>
   <p><code>cd ~/mirror-cell &amp;&amp; python3 mirror_cell.py &amp;&amp; python3 -m http.server 8018</code></p>
+  <p style="color:var(--dim)">For the 8&Prime; cell: <code>python3 mirror_cell.py --aperture 8</code>, then <code>?cell=8</code></p>
 </div></div>
 
 <script type="importmap">
@@ -267,13 +271,26 @@ const LABEL = {
 // directory so they cannot overwrite each other, and this is the matching end of that.
 const CELL = new URLSearchParams(location.search).get('cell') || '6';
 const BUILD = CELL === '6' ? 'build' : 'build-' + CELL;
+document.getElementById('srcPath').textContent = BUILD + '/assembly.json';
 
 async function build() {
   const A = await (await fetch(BUILD + '/assembly.json')).json();
   SEQ = A.sequence;
-  // Read off the model rather than typed, so the label follows whichever cell is loaded.
-  LABEL.tube = `Tube (${(A.tube.od / 25.4).toFixed(2)}″ OD stub)`;
-  LABEL.mirror = `Mirror (${(A.mirror.d / 25.4).toFixed(0)}″)`;
+  // Everything the page SAYS about the telescope is read off the model too, not just the
+  // geometry it draws. Typed into the HTML, this is the one part of the viewer that can
+  // still show the 6" cell while rendering the 8" one.
+  const inch = mm => mm / 25.4;
+  const md = inch(A.mirror.d), mt = inch(A.mirror.t);
+  document.getElementById('title').textContent = `${md.toFixed(0)}" Mirror Cell`;
+  document.title = `${md.toFixed(0)}" Mirror Cell — Assembly Viewer`;
+  const bits = [`${md.toFixed(3)}″ × ${mt.toFixed(3)}″ mirror`];
+  // Only when the cell states one -- see "focal" in assembly().
+  if (A.mirror.focal) bits.push(`${inch(A.mirror.focal).toFixed(0)}″ f/${(A.mirror.focal / A.mirror.d).toFixed(2)}`);
+  bits.push(`${inch(A.tube.id).toFixed(3)}″ ID tube`);
+  document.getElementById('subtitle').textContent = bits.join(' · ');
+
+  LABEL.tube = `Tube (${inch(A.tube.od).toFixed(2)}″ OD stub)`;
+  LABEL.mirror = `Mirror (${md.toFixed(0)}″)`;
 
   // The coupons are a separate build step and may not have been run; their absence is
   // normal, not an error, so it must not take the page down with it.
