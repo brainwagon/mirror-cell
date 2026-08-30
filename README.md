@@ -1,5 +1,7 @@
 # Mirror Cell — 6" and 8"
 
+![The assembly viewer, at step 12 of the 6" build sequence](./docs/img/viewer.png)
+
 A 3-point primary mirror cell — 3D printed in black ABS, assembled with 10-24 hardware.
 Two telescopes are built from one model:
 
@@ -113,7 +115,8 @@ every part in `PARTS` with the right quantity. The coupon rows appear once `test
 run; until then the panel says so. `build/` is gitignored, so the files are whatever your
 last run produced.
 
-Drag to orbit, scroll to zoom, right-drag to pan.
+Drag to orbit, scroll to zoom, right-drag to pan. The picture at the top of this file is
+that page, on step 12 of the 6" sequence.
 
 **The instructions are not written in the HTML.** `sequence()` in `mirror_cell.py` emits
 them alongside the geometry, and assertions check that every step names a part that
