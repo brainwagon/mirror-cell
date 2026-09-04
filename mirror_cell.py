@@ -18,7 +18,8 @@ dimensioned in inches, so inch() converts at the boundary.
 
 import os
 import sys
-from math import sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2, pi
+from math import (sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2,
+                  acos, pi)
 from pathlib import Path
 from build123d import *
 
@@ -1010,6 +1011,200 @@ MODIFIERS = {
     "tube_plate": (insert_bosses, "insert_solid", {"sparse_infill_density": "100%"}),
 }
 
+# Beyond the explicit table, EVERY exported part gets one more modifier per through
+# hole: a cylinder HOLE_SOLID_WALL bigger than the bore, forcing the material around
+# it to 100%. At sparse infill the perimeter rings around a small bore stand alone in
+# gyroid -- two disconnected walls of nothing -- and a bolt driven through them tears
+# out or prints oversize. The same lever the insert bosses pull, applied where the
+# need is small enough not to notice. Bores wider than HOLE_SOLID_MAX_D are left
+# alone: big holes carry their own perimeters, and a solid annulus around the tube
+# plate's 38 mm centre bore would be a large slab of dense material in the one part
+# whose warping is the failure mode (see the tube plate's print note).
+HOLE_SOLID_WALL = 2.0
+HOLE_SOLID_MAX_D = 10.0
+# The modifier runs this far past the bore's ends, where that stays inside the part:
+# past the ends the part's own faces bound the material the ring is for. The pad is
+# CLAMPED at the part's envelope, and the bottom end especially must never cross it --
+# a modifier hanging below the bed is the object's lowest geometry, the slicer lifts
+# the whole assembly until THAT touches the plate, and the part itself is left
+# floating with an empty first layer. Anycubic Slicer Next refuses exactly that.
+HOLE_SOLID_PAD = 1.0
+
+
+def through_holes(shape):
+    """Every cylindrical THROUGH hole in a part, as (foot, axis, radius, vmin, vmax).
+
+    (foot, axis) is the hole's axis; foot is the axis's closest approach to the model
+    origin, so every face of one hole reduces to the same axis however OCC oriented
+    each face's own. vmin/vmax are axial parameters of the extremes, measured along
+    axis from foot -- the union over the group, so a bore's counterbores (the spring
+    seat, the RTV well) widen the span without changing the bore radius.
+
+    Read off the SOLID, not from the code that cut the holes -- the same argument as
+    read_3mf_modifiers(): only the geometry is evidence. Cylindrical faces are grouped
+    coaxially (a bore interrupted by a wider pocket arrives as several faces), then a
+    group must pass three tests to count as a hole:
+
+      * small enough to want help: 2*radius is at most HOLE_SOLID_MAX_D.
+      * open at both ends: a point on the axis just past each extreme is outside the
+        solid. Blind bores -- the insert pockets, the landing-pad recesses, the hex
+        pockets' interiors -- fail here and are left alone.
+      * actually enclosed: a circle just outside the bore, sampled along it, must be
+        buried in material at some station. This is what keeps the knobs' flute
+        cutters -- cylindrical voids whose AXIS lies outside the part, open past both
+        ends and therefore through by the test above -- from being taken for holes.
+    """
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+    from OCP.gp import gp_Pnt
+    from OCP.TopAbs import TopAbs_IN, TopAbs_OUT
+
+    groups = {}
+    for f in shape.faces():
+        if f.geom_type != GeomType.CYLINDER:
+            continue
+        cyl = BRepAdaptor_Surface(f.wrapped).Cylinder()
+        ax = cyl.Axis()
+        # One canonical direction per axis, whichever way the face happened to be
+        # oriented: an extruded hole's walls and a cut pocket's can disagree in sign.
+        axis = (ax.Direction().X(), ax.Direction().Y(), ax.Direction().Z())
+        axis = max(axis, tuple(-c for c in axis))
+        p = (ax.Location().X(), ax.Location().Y(), ax.Location().Z())
+        mu = sum(p[i] * axis[i] for i in range(3))
+        foot = tuple(p[i] - mu * axis[i] for i in range(3))
+        key = (tuple(round(c, 3) for c in foot)
+               + tuple(round(c, 6) for c in axis))
+        ts = [sum((v.X, v.Y, v.Z)[i] * axis[i] for i in range(3))
+              for v in f.vertices()]
+        g = groups.setdefault(key, [1e9, [], []])
+        g[0] = min(g[0], cyl.Radius())
+        g[1].append(min(ts))
+        g[2].append(max(ts))
+
+    solid = BRepClass3d_SolidClassifier(shape.wrapped)
+
+    def state(x, y, z):
+        solid.Perform(gp_Pnt(x, y, z), 1e-6)
+        return solid.State()
+
+    out = []
+    for key, (r, tmins, tmaxs) in sorted(groups.items()):
+        if 2 * r > HOLE_SOLID_MAX_D:
+            continue
+        foot, axis = key[:3], key[3:]
+        vmin, vmax = min(tmins), max(tmaxs)
+        # 0.1 mm: well past the OCC tolerance, nowhere near any real feature.
+        eps = 0.1
+        ends = [tuple(foot[i] + axis[i] * (t + eps * s) for i in range(3))
+                for t, s in ((vmin, -1.0), (vmax, +1.0))]
+        if not all(state(*pt) == TopAbs_OUT for pt in ends):
+            continue
+        # Perpendicular frame for the probe circle: any unit vector off the axis, and
+        # the axis crossed with it.
+        u = (0.0, 1.0, 0.0) if abs(axis[0]) > 0.9 else (1.0, 0.0, 0.0)
+        w = (axis[1] * u[2] - axis[2] * u[1],
+             axis[2] * u[0] - axis[0] * u[2],
+             axis[0] * u[1] - axis[1] * u[0])
+        probe = r + 0.5
+        n = 8
+        buried = False
+        for k in range(1, 6):
+            t = vmin + (vmax - vmin) * k / 6.0
+            pt = [foot[i] + axis[i] * t for i in range(3)]
+            ring = [tuple(pt[i] + probe * (cos(2 * pi * j / n) * u[i]
+                                           + sin(2 * pi * j / n) * w[i])
+                          for i in range(3)) for j in range(n)]
+            if all(state(*q) == TopAbs_IN for q in ring):
+                buried = True
+                break
+        if not buried:
+            continue
+        out.append((foot, axis, r, vmin, vmax))
+    return out
+
+
+def hole_modifiers(shape):
+    """The modifier SOLIDS for a part's through holes: one cylinder per hole, bored
+    radius + HOLE_SOLID_WALL, running HOLE_SOLID_PAD past each end, CLAMPED to the
+    part's own envelope.
+
+    Bigger than the bore because a modifier only touches material: a cylinder exactly
+    filling the void overlaps nothing at all, and 100% infill of nothing is nothing.
+    Past the ends so the ring reaches the material at the bore's mouths -- but never
+    past the part. Below the bed face a modifier is worse than useless: it becomes
+    the object's lowest geometry, the slicer lifts the assembly until it touches the
+    plate, and the part itself floats with an empty first layer (which Anycubic
+    Slicer Next refuses outright). Clamped ends sit exactly on the part's faces, the
+    convention the insert_solid blocks shipped with and the slicer accepted.
+    """
+    bb = shape.bounding_box()
+    mins = (bb.min.X, bb.min.Y, bb.min.Z)
+    maxs = (bb.max.X, bb.max.Y, bb.max.Z)
+    out = []
+    for foot, axis, r, vmin, vmax in through_holes(shape):
+        R = r + HOLE_SOLID_WALL
+        # The axial interval over which the axis runs inside the part's envelope: a
+        # slab test per dimension, intersected. A through hole's axis crosses the
+        # part, so the interval is never empty -- assert rather than emit a modifier
+        # hanging in space beyond it.
+        lo, hi = -1e9, 1e9
+        for i in range(3):
+            if abs(axis[i]) < 1e-9:
+                assert mins[i] - 1e-6 <= foot[i] <= maxs[i] + 1e-6, \
+                    "through-hole axis runs outside the part's envelope"
+                continue
+            t0, t1 = (mins[i] - foot[i]) / axis[i], (maxs[i] - foot[i]) / axis[i]
+            lo, hi = max(lo, min(t0, t1)), min(hi, max(t0, t1))
+        assert lo <= hi, "through-hole axis never enters the part's envelope"
+        t0 = max(vmin - HOLE_SOLID_PAD, lo)
+        t1 = min(vmax + HOLE_SOLID_PAD, hi)
+        start = tuple(foot[i] + axis[i] * t0 for i in range(3))
+        theta = degrees(acos(max(-1.0, min(1.0, axis[2]))))
+        phi = degrees(atan2(axis[1], axis[0]))
+        out.append(Pos(*start) * Rot(0, 0, phi) * Rot(0, theta, 0)
+                   * Cylinder(radius=R, height=t1 - t0,
+                              align=(Align.CENTER, Align.CENTER, Align.MIN)))
+    return out
+
+
+def expected_hole_mods(name):
+    """The hole modifiers a part MUST carry, from the constants its cuts are written
+    from -- the same independence as the insert checks in the round-trip: arithmetic
+    on dimensions, never a call back into through_holes(), which would be the detector
+    grading its own work. Rows are (cx, cy, bore diameter, top of the coaxial stack).
+
+    The top of the stack is where the bore's cylinder walls stop, which is the plate's
+    front face EXCEPT at the push bolts, whose bore is interrupted by the hex pocket
+    above it -- the pocket is wider than the bore, so the walls stop at its floor.
+    """
+    if PRINT[name][0].density >= 100:
+        # A part printed solid has no infill for a modifier to thicken.
+        return []
+    out = []
+    if name == "tube_plate":
+        # centre bore + fan holes (unpopulated option), as tube_plate() cuts them
+        out.append((0.0, 0.0, CENTER_BORE, TUBE_PLATE_T))
+        out += [(sx * FAN_PITCH / 2, sy * FAN_PITCH / 2, FAN_HOLE_D, TUBE_PLATE_T)
+                for sx in (-1, 1) for sy in (-1, 1)]
+        for a in STATIONS:
+            c, s = cos(radians(a)), sin(radians(a))
+            out.append((R_PUSH * c, R_PUSH * s, PASS_HOLE_D,
+                        TUBE_PLATE_T - (NUT_T + 0.4)))
+            out.append((R_PULL * c, R_PULL * s, PULL_HOLE_D, TUBE_PLATE_T))
+    elif name == "mirror_plate":
+        out.append((0.0, 0.0, MP_CENTER_BORE, MIRROR_PLATE_T))
+        for a in (30.0, 150.0, 270.0):          # mid-angles, as mirror_plate() cuts them
+            c, s = cos(radians(a)), sin(radians(a))
+            out.append((MP_LIGHTEN_RC * c, MP_LIGHTEN_RC * s,
+                        2 * MP_LIGHTEN_R, MIRROR_PLATE_T))
+        for a in STATIONS:
+            c, s = cos(radians(a)), sin(radians(a))
+            out.append((R_PULL * c, R_PULL * s, PASS_HOLE_D, MIRROR_PLATE_T))
+    # The size cap is part of the contract, so it filters here too: the centre bores
+    # above are listed and then struck, which is what keeps a cap regression from
+    # looking like an unexpected modifier instead of a missing one.
+    return [h for h in out if h[2] <= HOLE_SOLID_MAX_D]
+
 
 def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
     """A 3MF carrying the part AND the settings it wants.
@@ -1022,11 +1217,24 @@ def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
 
     The override keys off the object id in 3D/3dmodel.model, which Mesher writes as 1 and
     <build> references, so the id is read back rather than assumed.
+
+    Modifiers come from two places. The explicit ones are the caller's (the MODIFIERS
+    table, or test_coupon.py's) -- `modifiers` is one (make, name, overrides) group or a
+    list of them. On top of those, every part sliced at under 100% infill gets a
+    hole_solid group generated from its own geometry: one modifier cylinder per through
+    hole, see hole_modifiers(). A part printed at 100% has no infill for a modifier to
+    thicken, so it is spared the file noise.
     """
     import re, zipfile
     path.parent.mkdir(parents=True, exist_ok=True)
     name = part_number or path.stem
     mods = MODIFIERS.get(name) if modifiers is None else modifiers
+    mods = [mods] if isinstance(mods, tuple) else list(mods or [])
+    if slice_spec.density < 100:
+        holes = hole_modifiers(shape)
+        if holes:
+            mods.append((lambda: holes, "hole_solid",
+                         {"sparse_infill_density": "100%"}))
     rows = "".join(f'    <metadata key="{k}" value="{v}"/>\n'
                    for k, v in slice_spec.config().items())
 
@@ -1053,9 +1261,6 @@ def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
     # With modifiers the part becomes a components object holding the real mesh plus one
     # mesh per modifier, and <part id> matches each component's objectid -- the layout a
     # real project file uses.
-    make, mod_name, overrides = mods
-    solids = list(make())
-
     def mesh_object(sh, oid):
         """ONE shape per object. add_shape() on a compound of disjoint solids silently
         writes only the FIRST -- which shipped a tube plate with one insert reinforced out
@@ -1073,8 +1278,25 @@ def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
     import uuid
     u = lambda: str(uuid.uuid4())
     ident = "1 0 0 0 1 0 0 0 1 0 0 0"
+    mtx = '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
     blocks = [mesh_object(shape, 1)]
-    blocks += [mesh_object(s, 2 + i) for i, s in enumerate(solids)]
+    parts = [f'    <part id="1" subtype="normal_part">\n'
+             f'      <metadata key="name" value="{name}"/>\n      {mtx}\n    </part>\n']
+    oid = 2
+    for make, mod_name, overrides in mods:
+        solids = list(make())
+        blocks += [mesh_object(s, oid + i) for i, s in enumerate(solids)]
+        over = "".join(f'      <metadata key="{k}" value="{v}"/>\n'
+                       for k, v in overrides.items())
+        # Numbered off the modifier list itself, not off STATIONS. Naming them by station
+        # angle read better but pinned this writer to three-per-part: a caller with two
+        # modifiers got three <part> entries, the last pointing at an object that does not
+        # exist. The names are labels in the slicer's object tree; the count is structural.
+        parts += "".join(
+            f'    <part id="{oid+i}" subtype="modifier_part">\n'
+            f'      <metadata key="name" value="{mod_name}_{i+1}"/>\n      {mtx}\n{over}'
+            f'    </part>\n' for i in range(len(solids)))
+        oid += len(solids)
     ids = list(range(1, len(blocks) + 1))
     comps = "".join(f'    <component objectid="{i}" p:UUID="{u()}" '
                     f'transform="{ident}"/>\n' for i in ids)
@@ -1091,22 +1313,9 @@ def write_3mf(shape, path, slice_spec, part_number=None, modifiers=None):
         f' <build p:UUID="{u()}">\n  <item objectid="{container}" p:UUID="{u()}" '
         f'transform="{ident}" printable="1"/>\n </build>\n</model>\n')
 
-    mtx = '<metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>'
-    over = "".join(f'      <metadata key="{k}" value="{v}"/>\n'
-                   for k, v in overrides.items())
-    parts = (f'    <part id="1" subtype="normal_part">\n'
-             f'      <metadata key="name" value="{name}"/>\n      {mtx}\n    </part>\n')
-    # Numbered off the modifier list itself, not off STATIONS. Naming them by station
-    # angle read better but pinned this writer to three-per-part: a caller with two
-    # modifiers got three <part> entries, the last pointing at an object that does not
-    # exist. The names are labels in the slicer's object tree; the count is structural.
-    parts += "".join(
-        f'    <part id="{2+i}" subtype="modifier_part">\n'
-        f'      <metadata key="name" value="{mod_name}_{i+1}"/>\n      {mtx}\n{over}'
-        f'    </part>\n' for i in range(len(solids)))
     cfg = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
            f'  <object id="{container}">\n'
-           f'    <metadata key="name" value="{name}"/>\n{rows}{parts}'
+           f'    <metadata key="name" value="{name}"/>\n{rows}{"".join(parts)}'
            '  </object>\n</config>\n')
 
     with zipfile.ZipFile(path) as z:
@@ -2170,47 +2379,102 @@ if __name__ == "__main__":
                     f"  wrote:  {got}\n  meant:  {want}")
 
             found = read_3mf_modifiers(p)
-            if name not in MODIFIERS:
-                if found:
-                    raise SystemExit(f"\n{p} has {len(found)} unexpected modifier(s)")
-                continue
-            _, _, overrides = MODIFIERS[name]
-            if len(found) != len(STATIONS):
+            ins = [m for m in found if m[0].startswith("insert_solid")]
+            holes = [m for m in found if m[0].startswith("hole_solid")]
+            stray = [m for m in found if not (m[0].startswith("insert_solid")
+                                              or m[0].startswith("hole_solid"))]
+            if stray:
+                raise SystemExit(f"\n{p} carries {len(stray)} unexpected modifier(s): "
+                                 f"{[m[0] for m in stray]}")
+
+            # The explicit modifiers: one block centred on each station's bore, spanning
+            # the plate, and big enough to hold the cylinder ruthex's minimum wall
+            # describes. Written from the insert constants rather than from
+            # insert_bosses(), so it is not the generator checking its own homework --
+            # and it reads the MESHES, so a mesh that never reached the file fails here
+            # however good the source geometry was.
+            if name in MODIFIERS:
+                _, _, overrides = MODIFIERS[name]
+                if len(ins) != len(STATIONS):
+                    raise SystemExit(
+                        f"\n{p} carries {len(ins)} insert_solid meshes, expected "
+                        f"{len(STATIONS)} -- one per station.\n"
+                        f"  found: {[f[0] for f in found]}")
+                rr = INSERT_OD / 2 + INSERT_MIN_WALL
+                reach = TP_ARC_R - INSERT_DEPTH / 2
+                for a in STATIONS:
+                    cx, cy = reach * cos(radians(a)), reach * sin(radians(a))
+                    near = [b for _, _, b in ins
+                            if hypot((b[0] + b[3]) / 2 - cx,
+                                     (b[1] + b[4]) / 2 - cy) < 1.0]
+                    if not near:
+                        raise SystemExit(
+                            f"\n{p}: no modifier centred on the insert at {a:.0f} deg "
+                            f"(expected near x={cx:.1f} y={cy:.1f})\n"
+                            f"  boxes in the file: {[f[2] for f in found]}")
+                    b = near[0]
+                    if not (b[2] <= 1e-6 and b[5] >= TUBE_PLATE_T - 1e-6):
+                        raise SystemExit(f"\n{p}: modifier at {a:.0f} deg spans z "
+                                         f"{b[2]:.2f}..{b[5]:.2f}, not the full plate")
+                    if min(b[3] - b[0], b[4] - b[1]) < 2 * rr - 1e-6:
+                        raise SystemExit(
+                            f"\n{p}: modifier at {a:.0f} deg is {b[3]-b[0]:.1f} x "
+                            f"{b[4]-b[1]:.1f} mm, too small for the {2*rr:.1f} mm "
+                            f"solid region ruthex's minimum wall needs")
+                for nm, ov, _ in ins:
+                    if ov != overrides:
+                        raise SystemExit(f"\n{p}: modifier {nm} carries {ov}, "
+                                         f"expected {overrides}")
+            elif ins:
+                raise SystemExit(f"\n{p} has {len(ins)} insert_solid modifier(s), "
+                                 f"but {name} is not in MODIFIERS")
+
+            # The hole_solid modifiers: one per through hole, checked against
+            # expected_hole_mods() -- constants again, never the detector re-reading
+            # itself. The detector is the only thing that knows a hole EXISTS; these
+            # checks say the file agrees with the design about WHERE, HOW WIDE, and
+            # HOW SOLID.
+            want = expected_hole_mods(name)
+            if len(holes) != len(want):
                 raise SystemExit(
-                    f"\n{p} carries {len(found)} modifier meshes, expected "
-                    f"{len(STATIONS)} -- one per station.\n"
-                    f"  found: {[f[0] for f in found]}")
-            # One modifier centred on each station's bore, spanning the plate, and big
-            # enough to hold the cylinder ruthex's minimum wall describes. Written from
-            # the insert constants rather than from insert_bosses(), so it is not the
-            # generator checking its own homework -- and it reads the MESHES, so a mesh
-            # that never reached the file fails here however good the source geometry was.
-            rr = INSERT_OD / 2 + INSERT_MIN_WALL
-            reach = TP_ARC_R - INSERT_DEPTH / 2
-            for a in STATIONS:
-                cx, cy = reach * cos(radians(a)), reach * sin(radians(a))
-                near = [b for _, _, b in found
+                    f"\n{p} carries {len(holes)} hole_solid modifiers, expected "
+                    f"{len(want)}\n  found: {[f[0] for f in holes]}")
+            H = PARTS[name]().bounding_box().size.Z
+            for cx, cy, d, ztop in want:
+                near = [b for _, _, b in holes
                         if hypot((b[0] + b[3]) / 2 - cx, (b[1] + b[4]) / 2 - cy) < 1.0]
                 if not near:
                     raise SystemExit(
-                        f"\n{p}: no modifier centred on the insert at {a:.0f} deg "
-                        f"(expected near x={cx:.1f} y={cy:.1f})\n"
-                        f"  boxes in the file: {[f[2] for f in found]}")
+                        f"\n{p}: no hole modifier on the bore at x={cx:.1f} "
+                        f"y={cy:.1f} (d={d:.2f})\n"
+                        f"  boxes in the file: {[f[2] for f in holes]}")
                 b = near[0]
-                if not (b[2] <= 1e-6 and b[5] >= TUBE_PLATE_T - 1e-6):
-                    raise SystemExit(f"\n{p}: modifier at {a:.0f} deg spans z "
-                                     f"{b[2]:.2f}..{b[5]:.2f}, not the full plate")
-                if min(b[3] - b[0], b[4] - b[1]) < 2 * rr - 1e-6:
+                # Covers the bore's own reach, and stays INSIDE the part's envelope:
+                # below the bed the modifier is the object's lowest geometry, and the
+                # slicer's answer to that is to lift the assembly until the modifier
+                # touches the plate -- leaving the part floating with an empty first
+                # layer. That failure is exactly what b[2] >= 0 is here to catch.
+                if not (b[2] >= -1e-6 and b[5] >= ztop - 1e-6 and b[5] <= H + 1e-6):
                     raise SystemExit(
-                        f"\n{p}: modifier at {a:.0f} deg is {b[3]-b[0]:.1f} x "
-                        f"{b[4]-b[1]:.1f} mm, too small for the {2*rr:.1f} mm "
-                        f"solid region ruthex's minimum wall needs")
-            for nm, ov, _ in found:
-                if ov != overrides:
-                    raise SystemExit(f"\n{p}: modifier {nm} carries {ov}, "
-                                     f"expected {overrides}")
+                        f"\n{p}: hole modifier at x={cx:.1f} y={cy:.1f} spans z "
+                        f"{b[2]:.2f}..{b[5]:.2f}, not the bore's own "
+                        f"0..{ztop:.2f} inside the part's 0..{H:.2f}")
+                # The modifier comes back as a tessellated cylinder, whose chords sit a
+                # few microns inside the true circle -- hence the 0.01 rather than 1e-6.
+                if min(b[3] - b[0], b[4] - b[1]) < d + 2 * HOLE_SOLID_WALL - 0.01:
+                    raise SystemExit(
+                        f"\n{p}: hole modifier at x={cx:.1f} y={cy:.1f} is "
+                        f"{b[3]-b[0]:.2f} x {b[4]-b[1]:.2f} mm, smaller than the "
+                        f"{d + 2 * HOLE_SOLID_WALL:.2f} mm a {d:.2f} mm bore plus its "
+                        f"{HOLE_SOLID_WALL:g} mm wall needs")
+            for nm, ov, _ in holes:
+                if ov != {"sparse_infill_density": "100%"}:
+                    raise SystemExit(f"\n{p}: hole modifier {nm} carries {ov}, "
+                                     f"expected 100% infill")
+        n_mods = sum(len(read_3mf_modifiers(Path(f"{BUILD}/3mf/{n}.3mf")))
+                     for n in PARTS)
         print(f"{BUILD}/3mf/ written; {len(PARTS)} parts, settings and "
-              f"{len(STATIONS)} modifiers verified in the files")
+              f"{n_mods} modifiers verified in the files")
 
         print(f"\n{BUILD}/assembly.json written; {BUILD}/bom.md, {BUILD}/bom.csv and "
               f"the committed {BOM_PATH} ({len(rows)} lines)")

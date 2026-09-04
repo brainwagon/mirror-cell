@@ -486,17 +486,26 @@ if __name__ == "__main__":
         # going in; only the file says what came out, and a compound handed to add_shape()
         # once wrote one mesh out of three while every input check passed.
         found = mc.read_3mf_modifiers(p3)
+        ins = [m for m in found if m[0].startswith("insert_solid")]
+        holes = [m for m in found if m[0].startswith("hole_solid")]
+        stray = [m for m in found if not (m[0].startswith("insert_solid")
+                                          or m[0].startswith("hole_solid"))]
+        if stray:
+            raise SystemExit(f"\n{p3} carries {len(stray)} unexpected modifier(s): "
+                             f"{[m[0] for m in stray]}")
         want = MODIFIERS.get(name)
-        if not want:
-            if found:
-                raise SystemExit(f"\n{p3} has {len(found)} unexpected modifier(s)")
-        else:
+        if want:
+            # The insert coupon's bores are radial and blind, so write_3mf() finds no
+            # through holes in it: everything here is insert_solid and nothing else.
+            if holes:
+                raise SystemExit(f"\n{p3} has {len(holes)} hole_solid modifier(s), "
+                                 f"but the insert coupon has no through holes")
             make, _, over = want
-            if len(found) != len(make()):
+            if len(ins) != len(make()):
                 raise SystemExit(
-                    f"\n{p3} carries {len(found)} modifier meshes, expected "
+                    f"\n{p3} carries {len(ins)} modifier meshes, expected "
                     f"{len(make())} -- one per bore.\n  found: {[f[0] for f in found]}")
-            for (sx, y, d), (nm, ov, bb) in zip(ic_bores(), found):
+            for (sx, y, d), (nm, ov, bb) in zip(ic_bores(), ins):
                 if ov != over:
                     raise SystemExit(f"\n{p3}: modifier {nm} carries {ov}, meant {over}")
                 cx = sx * (IC_X / 2 - mc.INSERT_DEPTH / 2)
@@ -508,6 +517,56 @@ if __name__ == "__main__":
                 if not (bb[2] <= 1e-6 and bb[5] >= IC_T - 1e-6):
                     raise SystemExit(f"\n{p3}: modifier {nm} spans z "
                                      f"{bb[2]:.2f}..{bb[5]:.2f}, not the full thickness")
+        else:
+            # The fit coupon prints at the tube plate's 40 % settings, so write_3mf()
+            # added a hole_solid modifier per through hole -- the same rule the real
+            # parts follow, which is why the coupon should keep it. The holes it should
+            # find are known from the tables they were cut from: the twelve ladder
+            # punch-outs (whose bore walls stop at their pocket floors) plus the two
+            # through rungs on the MISC row.
+            if ins:
+                raise SystemExit(f"\n{p3} has {len(ins)} insert_solid modifier(s), "
+                                 f"but the fit coupon has no inserts")
+            want_holes = [(col_x(i), y, mc.PASS_HOLE_D, COUPON_T - h)
+                          for i in range(len(FIT_LADDER))
+                          for y, h in ((NUT_Y, NUT_POCKET_H),
+                                       (HEAD_Y, HEAD_POCKET_H))]
+            want_holes += [(x, MISC_Y, d, COUPON_T)
+                           for _, x, d, z0, z1 in misc_features()
+                           if z0 == 0.0 and z1 == COUPON_T]
+            if len(holes) != len(want_holes):
+                raise SystemExit(
+                    f"\n{p3} carries {len(holes)} hole_solid modifiers, expected "
+                    f"{len(want_holes)}\n  found: {[f[0] for f in holes]}")
+            for cx, cy, d, ztop in want_holes:
+                near = [bb for _, _, bb in holes
+                        if abs((bb[0] + bb[3]) / 2 - cx) < 1.0
+                        and abs((bb[1] + bb[4]) / 2 - cy) < 1.0]
+                if not near:
+                    raise SystemExit(
+                        f"\n{p3}: no hole modifier on the bore at ({cx:.1f}, {cy:.1f}) "
+                        f"(d={d:.2f})\n  boxes in the file: {[f[2] for f in holes]}")
+                bb = near[0]
+                # Covers the bore's reach, and never leaves the coupon's envelope --
+                # below the bed the modifier lifts the whole assembly off the plate
+                # and the slicer refuses the floating part's empty first layer.
+                if not (bb[2] >= -1e-6 and bb[5] >= ztop - 1e-6
+                        and bb[5] <= COUPON_T + 1e-6):
+                    raise SystemExit(
+                        f"\n{p3}: hole modifier at ({cx:.1f}, {cy:.1f}) spans z "
+                        f"{bb[2]:.2f}..{bb[5]:.2f}, not the bore's own "
+                        f"0..{ztop:.2f} inside the coupon's 0..{COUPON_T:.2f}")
+                # tessellated-cylinder sag: chords sit a few microns inside the circle
+                if min(bb[3] - bb[0], bb[4] - bb[1]) < d + 2 * mc.HOLE_SOLID_WALL - 0.01:
+                    raise SystemExit(
+                        f"\n{p3}: hole modifier at ({cx:.1f}, {cy:.1f}) is "
+                        f"{bb[3]-bb[0]:.2f} x {bb[4]-bb[1]:.2f} mm, smaller than the "
+                        f"{d + 2 * mc.HOLE_SOLID_WALL:.2f} mm a {d:.2f} mm bore plus "
+                        f"its {mc.HOLE_SOLID_WALL:g} mm wall needs")
+            for nm, ov, _ in holes:
+                if ov != {"sparse_infill_density": "100%"}:
+                    raise SystemExit(f"\n{p3}: hole modifier {nm} carries {ov}, "
+                                     f"expected 100% infill")
         bb = part.bounding_box()
         print(f"{name:14s} vol {part.volume/1000:8.2f} cm^3   "
               f"bbox {bb.size.X:6.1f} x {bb.size.Y:6.1f} x {bb.size.Z:6.1f} mm")
