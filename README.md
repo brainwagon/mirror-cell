@@ -62,7 +62,14 @@ Requires `build123d` (`pip install --user build123d`).
 
 ## View it
 
-The page fetches STLs, so it needs to be served over HTTP — `file://` will not work.
+It is live at **<http://mvandewettering.com/mirror-cell/>** — the 6" cell, or
+[`?cell=8`](http://mvandewettering.com/mirror-cell/?cell=8) for the 8". GitHub Actions
+runs the exporter for both cells on every push to `main` and publishes the result
+(`.github/workflows/pages.yml`), because the build directories are gitignored and so the
+site cannot be served from the repo as committed.
+
+To view a local build instead: the page fetches STLs, so it needs to be served over
+HTTP — `file://` will not work.
 
 ```sh
 python3 -m http.server 8018

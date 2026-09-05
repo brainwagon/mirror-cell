@@ -1,0 +1,65 @@
+# The viewer is index.html plus the files the model writes, and the build directories are
+# gitignored -- so the site cannot be served from the repo as committed. This job runs the
+# exporter for both cells the way you would locally, then publishes the result.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Standard Pages deployment permissions: read the repo, mint an id-token for the deploy.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a newer push win rather than queue behind an old one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Pinned: build123d carries the OCC kernel, and a kernel that changes under the
+      # model is exactly the surprise this repo's assertions exist to catch early.
+      - run: pip install build123d==0.11.1
+
+      # Same commands as the README. --check is not enough here: the site needs the files.
+      - run: python3 mirror_cell.py
+      - run: python3 mirror_cell.py --aperture 8
+      - run: python3 test_coupon.py
+
+      # A stale committed BOM snapshot means the repo disagrees with the model. That is a
+      # commit that was never made, so fail the deploy rather than publish over it.
+      - run: |
+          python3 mirror_cell.py --check
+          python3 mirror_cell.py --aperture 8 --check
+
+      # The viewer resolves everything relative to the page, and assembly.json names the
+      # download paths with their build/ prefix -- so the site is just the tree as built.
+      - run: |
+          mkdir _site
+          rsync -a --exclude .git --exclude .github --exclude __pycache__ --exclude _site ./ _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
