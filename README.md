@@ -37,7 +37,7 @@ python3 mirror_cell.py                # the 6" cell  -> build/,   BOM.md
 python3 mirror_cell.py --aperture 8   # the 8" cell  -> build-8/, BOM-8.md
 ```
 
-Runs 171 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
+Runs 172 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
 (geometry **and** that part's slicer settings), `assembly.json` and the bill of materials
 — `bom.md`, `bom.csv`, and the committed snapshot at the top level (the build directories
 are gitignored, so those snapshots are the copies the repo carries). If a BOM row changed,
@@ -57,6 +57,20 @@ bearing floors, assembly clearances, spring travel, post placement, and printer 
 **If a check fails, the geometry is wrong; do not print it.** Several real defects were
 caught this way rather than at the print bed — including a version whose mirror could
 never have been installed, because the clips were printed onto the posts.
+
+If your blank is not the thickness the cell assumes (1.000" at 6", 1.330" at 8"), give it
+in inches:
+
+```sh
+python3 mirror_cell.py --aperture 8 --mirror-thickness 1.375   # -> build-8-t1.375/
+```
+
+Everything that follows from the glass follows it — post height, the tube stub, the moving
+mass the preload check weighs. A variant builds into its own directory, viewable as
+`?cell=8-t1.375`, and writes no committed BOM snapshot, so the verified cells are never
+touched. It is **refused** if the blank is floppier than the ones the 0.75R support
+argument covers ([ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md)):
+an 8" blank 1" thick fails, at 3.16× the 6" cell's sag against the 1.34× argued for.
 
 Requires `build123d` (`pip install --user build123d`).
 
@@ -160,7 +174,7 @@ all six bolts are 10-24 × 1½″ machine screws. Print one pull knob and press 
 2.2 mm wall before committing to six. Plate and knob outlines are functional but
 aesthetically provisional.
 
-**Nothing of the 8″ cell has been printed at all.** Its 171 checks pass and it shares the
+**Nothing of the 8″ cell has been printed at all.** Its 172 checks pass and it shares the
 6″ cell's measured fits, so the coupon work carries over — but its tube plate is
 237 × 207 mm on a 250 mm bed with only a 5 mm brim, and warp on a plate that size is the
 one risk no assertion covers. Print that plate first.

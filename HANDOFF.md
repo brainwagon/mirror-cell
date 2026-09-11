@@ -8,7 +8,7 @@ Under git as of 2026-07-31 (16 commits; head `fa302cc`).
 
 ## Where it stands
 
-Design is complete and internally consistent. **171 assertions pass for each cell** (plus
+Design is complete and internally consistent. **172 assertions pass for each cell** (plus
 103 in `test_coupon.py`). Two coupons have been printed and read; no cell part has, in
 either aperture.
 
@@ -25,7 +25,7 @@ python3 -m http.server 8018       # then open http://localhost:8018/  (?cell=8 f
 `--aperture 8` builds an **8.000" × 1.330" mirror in a 10.000" ID tube** from the same
 file, into `build-8/` and `BOM-8.md`. It is the same cell with three numbers changed:
 [ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md) has the
-full derivation. Both cells pass all 171 checks. **Everything below this section is about
+full derivation. Both cells pass all 172 checks. **Everything below this section is about
 the 6" cell** unless it says otherwise — it is the one that has been printed and measured,
 and the 8" inherits all of its measured fits because every fastener is identical.
 
@@ -34,7 +34,11 @@ Three things are worth knowing before touching either:
 - **`CELLS` at the top of `mirror_cell.py` is the only place the two differ.** Mirror
   diameter, mirror thickness, tube ID, the spring, the expected moving mass and the brim.
   Everything else is derived or is hardware. Do not add a per-aperture number anywhere
-  else in the file.
+  else in the file. The one exception is `--mirror-thickness` (inches), which replaces
+  the entry's `mirror_t` for a blank that is not the assumed one. It builds into
+  `build-<aperture>-t<thickness>/` with no committed BOM snapshot. A check refuses any
+  blank that sags more than the CELLS blanks do (R⁴/t³), because that is as far as
+  ADR-0003's 0.75R argument goes.
 - **The 8" spring is a different part** — 1.0 mm wire × 9 mm OD × **25 mm** free length,
   ~12 lb/in, giving 4.14 lb per station. The 6" spring fails the preload check at 8" and
   should: the glass goes 1089 → 2574 g. The force is bought with length rather than rate
