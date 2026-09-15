@@ -23,6 +23,7 @@ refused by verify() if the blank is thinner than the 0.75R argument covers.
 
 import os
 import sys
+from datetime import date
 from math import (sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2,
                   acos, pi)
 from pathlib import Path
@@ -101,6 +102,15 @@ BUILD = (f"build-{APERTURE}-t{MIRROR_T_IN:g}" if CUSTOM_T
          else CELL["build"])  # every written path hangs off this, so no two cells
 BOM_PATH = None if CUSTOM_T else CELL["bom"]  # can overwrite each other's exports
 BRIM = CELL["brim"]
+
+# The whole cell as one download. The name carries the cell AND the day it was built,
+# because a zip leaves here -- onto a phone, into an email, onto the shop machine next to
+# the printer -- and once it has, the filename is the only thing left saying which cell it
+# holds and how old it is. build/ is gitignored, so a new name each day costs the repo
+# nothing, and the exporter sweeps the cell's older zips rather than piling them up.
+BUNDLE_STEM = f"mirror-cell-{APERTURE}in" + (f"-t{MIRROR_T_IN:g}" if CUSTOM_T else "")
+BUNDLE_DATE = date.today().strftime("%Y-%m-%d")
+BUNDLE = f"{BUNDLE_STEM}-{BUNDLE_DATE}.zip"
 
 # --- the telescope -----------------------------------------------------------
 MIRROR_D = inch(CELL["mirror_d"])
@@ -902,6 +912,36 @@ def downloads(parts):
              "3mf": f"{BUILD}/3mf/{n}.3mf"} for n in PARTS]
 
 
+def bundle(dl):
+    """Everything you need at the printer, as one file: every printed part's STEP and 3MF.
+
+    The contents come from the download list rather than from PARTS, so the zip cannot
+    hold a file the viewer does not offer, nor miss one it does. Inside, the files sit in
+    a folder of the same name -- unzipping in Downloads/ should not scatter fourteen loose
+    parts across it, and the folder name is what still says which cell they are, and from
+    which day: unzip two vintages side by side and they stay two, rather than one merged
+    directory nobody can date."""
+    printed = [d for d in dl if d["kind"] == "printed"]
+    return {"zip": f"{BUILD}/{BUNDLE}", "name": BUNDLE, "folder": BUNDLE[:-len(".zip")],
+            "parts": len(printed),
+            "files": [d[k] for d in printed for k in ("step", "3mf")]}
+
+
+def write_bundle(spec):
+    """Write the zip named by bundle(), and sweep this cell's older ones. Deflated: the
+    STEPs are text and go to about a fifth, which is the difference between a file you
+    mail and one you explain how to fetch."""
+    import zipfile
+    path = Path(spec["zip"])
+    for old in path.parent.glob(f"{BUNDLE_STEM}-*.zip"):
+        if old.name != path.name:
+            old.unlink()
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in spec["files"]:
+            z.write(f, f"{spec['folder']}/{Path(f).name}")
+    return path.stat().st_size
+
+
 # ---------------------------------------------------------------- BILL OF MATERIALS
 
 # mm. The shell counts below are LAYERS, so they only mean a thickness at this height, and
@@ -1633,6 +1673,7 @@ def assembly():
                                 Z_MP + MIRROR_PLATE_T], "rot": a}
                        for a in (30.0, 150.0, 270.0)]},
     ]
+    dl = downloads(parts)
     return {
         "stack": {
             "tube_plate_front": TUBE_PLATE_T, "mirror_plate_rear": Z_MP,
@@ -1641,7 +1682,10 @@ def assembly():
         },
         "sequence": sequence(),
         "parts": parts,
-        "downloads": downloads(parts),
+        "downloads": dl,
+        # ...and the same files again as one zip, so the panel can offer "all of it"
+        # without the viewer having to know what "all of it" is.
+        "bundle": bundle(dl),
         # The BOM travels in assembly.json too, so the viewer can say how many lines it
         # is offering without parsing the file it links to. The rows here carry no
         # volumes -- the exporter writes the quantified copy to build/bom.md.
@@ -1968,6 +2012,20 @@ def verify():
         "printed downloads point at the 3MFs the exporter actually writes")
     chk(all(d["kind"] == "printed" for d in D),
         "every download is a printed part -- no purchased solid is in the design now")
+
+    # --- the one-file bundle must be the same list, zipped --------------------
+    # Same failure as above, one level up: a zip that is missing a part, or carries a
+    # path nothing writes, is discovered at the printer with the slicer already open.
+    import re
+    Z = A["bundle"]
+    chk(Z["zip"] == f"{BUILD}/{Z['name']}",
+        "the bundle is written into the build directory it describes")
+    chk(re.fullmatch(re.escape(BUNDLE_STEM) + r"-\d{4}-\d\d-\d\d\.zip", Z["name"])
+        is not None,
+        f"the bundle's filename names the cell and the day it was built ({Z['name']})")
+    chk(set(Z["files"]) == {f for d in printed for f in (d["step"], d["3mf"])},
+        "the bundle holds the STEP and the 3MF of every printed part, and nothing else")
+    chk(Z["parts"] == len(PARTS), "the bundle counts the parts it actually holds")
 
     # --- the BOM must agree with the assembly it claims to describe ------------
     # A BOM is exactly the document that rots: it is read once, at the shop counter,
@@ -2526,6 +2584,13 @@ if __name__ == "__main__":
                      for n in PARTS)
         print(f"{BUILD}/3mf/ written; {len(PARTS)} parts, settings and "
               f"{n_mods} modifiers verified in the files")
+
+        # Written last, from the files just verified above: the zip is a copy of the
+        # build, so it has no business existing until the build has been checked.
+        z = A["bundle"]
+        size = write_bundle(z)
+        print(f"{z['zip']} written; {len(z['files'])} files "
+              f"({z['parts']} parts, STEP + 3MF), {size/1e6:.1f} MB")
 
         print(f"\n{BUILD}/assembly.json written; {BUILD}/bom.md, {BUILD}/bom.csv"
               + (f" and the committed {BOM_PATH}" if BOM_PATH else "")

@@ -353,7 +353,7 @@ async function build() {
 
   buildUI(A);
   renderDownloads([...A.downloads, ...(coupons ? coupons.downloads : [])], !!coupons,
-                  A.bom);
+                  A.bom, A.bundle);
   gotoStep(step, true);
   fitMode();
 }
@@ -506,7 +506,20 @@ function bomRow(B) {
     <a class="stl" href="${B.csv}" download title="${B.csv}">CSV</a></div>`;
 }
 
-function renderDownloads(list, haveCoupons, B) {
+/* The whole cell in one file, offered first because it is what most people want: the
+   STEP and the 3MF of every printed part. The exporter names it -- cell and build date --
+   and download= makes the browser keep that name rather than invent one from the URL.
+   Guarded like the 3MF above: an assembly.json written before the bundle existed simply
+   does not offer the row. */
+function bundleRow(Z) {
+  return `<div class="grp">Everything</div>
+    <div class="row"><span class="nm">All printed parts
+      <em>${Z.parts} parts &middot; STEP + 3MF</em></span>
+    <a href="${Z.zip}" download="${Z.name}" title="${Z.name}">ZIP</a></div>`;
+}
+
+function renderDownloads(list, haveCoupons, B, Z) {
+  if (Z) dl.insertAdjacentHTML('beforeend', bundleRow(Z));
   if (B) dl.insertAdjacentHTML('beforeend', bomRow(B));
   for (const kind of ['printed', 'coupon', 'vendor']) {
     const rows = list.filter(d => d.kind === kind);

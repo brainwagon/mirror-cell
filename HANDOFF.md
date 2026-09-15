@@ -8,7 +8,7 @@ Under git as of 2026-07-31 (16 commits; head `fa302cc`).
 
 ## Where it stands
 
-Design is complete and internally consistent. **172 assertions pass for each cell** (plus
+Design is complete and internally consistent. **176 assertions pass for each cell** (plus
 103 in `test_coupon.py`). Two coupons have been printed and read; no cell part has, in
 either aperture.
 
@@ -25,7 +25,7 @@ python3 -m http.server 8018       # then open http://localhost:8018/  (?cell=8 f
 `--aperture 8` builds an **8.000" × 1.330" mirror in a 10.000" ID tube** from the same
 file, into `build-8/` and `BOM-8.md`. It is the same cell with three numbers changed:
 [ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md) has the
-full derivation. Both cells pass all 172 checks. **Everything below this section is about
+full derivation. Both cells pass all 176 checks. **Everything below this section is about
 the 6" cell** unless it says otherwise — it is the one that has been printed and measured,
 and the 8" inherits all of its measured fits because every fastener is identical.
 

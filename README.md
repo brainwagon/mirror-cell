@@ -37,8 +37,9 @@ python3 mirror_cell.py                # the 6" cell  -> build/,   BOM.md
 python3 mirror_cell.py --aperture 8   # the 8" cell  -> build-8/, BOM-8.md
 ```
 
-Runs 172 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
-(geometry **and** that part's slicer settings), `assembly.json` and the bill of materials
+Runs 176 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
+(geometry **and** that part's slicer settings), one dated zip of every part's STEP and
+3MF — `mirror-cell-6in-YYYY-MM-DD.zip` — `assembly.json` and the bill of materials
 — `bom.md`, `bom.csv`, and the committed snapshot at the top level (the build directories
 are gitignored, so those snapshots are the copies the repo carries). If a BOM row changed,
 the snapshot is rewritten and the run says which rows moved — **commit it**. To check
@@ -110,7 +111,13 @@ fan on the rear face, so the finished assembly can be seen in context. Both are 
 only and can be switched off in Explore. **The fan is a stand-in drawn in `fan()`,
 not a vendor solid** — trust its envelope, not its details.
 
-Under both is a **Downloads** panel. First the **annotated bill of materials** — MD or
+Under both is a **Downloads** panel. First **All printed parts**, one zip holding every
+part's STEP and 3MF — named for the cell and the day it was built,
+`mirror-cell-6in-2026-09-15.zip`, because once it has been mailed to somebody the filename
+is all that says which cell it holds and how old it is. Its contents are taken from the
+same download list the rows below it are drawn from, so it cannot quietly hold a different
+set; the exporter writes it after the 3MFs have been verified and sweeps the cell's older
+zips as it goes. Then the **annotated bill of materials** — MD or
 CSV — which is not a hand-maintained table: `bom()` in `mirror_cell.py` counts the printed
 quantities off the same instance lists the picture uses, reads every hardware dimension
 out of the parameters, and carries one line of *why* for each row (machine screws not cap
@@ -174,7 +181,7 @@ all six bolts are 10-24 × 1½″ machine screws. Print one pull knob and press 
 2.2 mm wall before committing to six. Plate and knob outlines are functional but
 aesthetically provisional.
 
-**Nothing of the 8″ cell has been printed at all.** Its 172 checks pass and it shares the
+**Nothing of the 8″ cell has been printed at all.** Its 176 checks pass and it shares the
 6″ cell's measured fits, so the coupon work carries over — but its tube plate is
 237 × 207 mm on a 250 mm bed with only a 5 mm brim, and warp on a plate that size is the
 one risk no assertion covers. Print that plate first.
