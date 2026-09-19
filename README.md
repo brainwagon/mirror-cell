@@ -2,8 +2,11 @@
 
 ![The assembly viewer, at step 12 of the 6" build sequence](./docs/img/viewer.png)
 
-A 3-point primary mirror cell — 3D printed in black ABS, assembled with 10-24 hardware.
-Two telescopes are built from one model:
+A 3-point primary mirror cell — 3D printed in black ABS, assembled with 10-24 hardware by
+default. The six collimation bolts (push and pull) can instead be **1/4-20** with
+`--bolts 1/4-20`; the three tube-mount inserts stay 10-24 either way (see
+[ADR-0004](./docs/adr/0004-collimation-hardware-is-a-config-option.md)). Two telescopes are
+built from one model:
 
 | | Mirror | Tube ID | Build | Buy list |
 |---|---|---|---|---|
@@ -35,9 +38,10 @@ scales, what deliberately does not, and why it stops at two entries.
 ```sh
 python3 mirror_cell.py                # the 6" cell  -> build/,   BOM.md
 python3 mirror_cell.py --aperture 8   # the 8" cell  -> build-8/, BOM-8.md
+python3 mirror_cell.py --bolts 1/4-20 # 1/4-20 collimation bolts -> build-6-q20/
 ```
 
-Runs 176 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
+Runs 177 assertions **for the cell selected**, then writes `*.step`, `*.stl`, `3mf/*.3mf`
 (geometry **and** that part's slicer settings), one dated zip of every part's STEP and
 3MF — `mirror-cell-6in-YYYY-MM-DD.zip` — `assembly.json` and the bill of materials
 — `bom.md`, `bom.csv`, and the committed snapshot at the top level (the build directories
@@ -73,28 +77,53 @@ touched. It is **refused** if the blank is floppier than the ones the 0.75R supp
 argument covers ([ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md)):
 an 8" blank 1" thick fails, at 3.16× the 6" cell's sag against the 1.34× argued for.
 
+If you have 1/4-20 hardware instead of 10-24 for the collimation bolts:
+
+```sh
+python3 mirror_cell.py --bolts 1/4-20            # -> build-6-q20/
+python3 mirror_cell.py --aperture 8 --bolts 1/4-20   # -> build-8-q20/
+```
+
+Only the six push/pull bolts, their six nuts, their pockets and holes change; the knobs and
+the mirror plate grow to suit the larger hexes and the taller head, the springs open to
+10.5 mm OD (with a longer free length to hold the preload) so they clear the 6.35 mm shank
+([ADR-0005](./docs/adr/0005-the-1-4-20-cell-uses-a-larger-bore-spring.md)), and the
+tube-mount inserts stay 10-24. It is a variant, so it builds into its own directory
+(viewable as `?cell=6-q20`) and writes no committed BOM snapshot. **`FIT_PRESS` is measured
+for 10-24 only** and is proportionally tighter on the larger 1/4-20 hex, so the fit coupon
+refuses `--bolts 1/4-20` — measure a 1/4-20 pocket before printing the cell
+([ADR-0004](./docs/adr/0004-collimation-hardware-is-a-config-option.md)).
+
 Requires `build123d` (`pip install --user build123d`).
 
 ## View it
 
 It is live at **<http://mvandewettering.com/mirror-cell/>** — the 6" cell, or
 [`?cell=8`](http://mvandewettering.com/mirror-cell/?cell=8) for the 8". GitHub Actions
-runs the exporter for both cells on every push to `main` and publishes the result
-(`.github/workflows/pages.yml`), because the build directories are gitignored and so the
-site cannot be served from the repo as committed.
+runs the exporter for both apertures **and both bolt sizes** on every push to `main` and
+publishes the result (`.github/workflows/pages.yml`), because the build directories are
+gitignored and so the site cannot be served from the repo as committed.
+
+A **Mirror** switch (6″/8″) and a **Collimation bolts** switch (10-24/1/4-20) at the top of
+the panel move between builds without leaving the page — each navigates to the matching
+`?cell=` directory and keeps your place in the sequence. The mirror switch drops any
+`--mirror-thickness` suffix (a blank is particular to its aperture); the bolt size carries
+across. Both states are confirmed against `assembly.json`, so the switches always agree with
+the geometry on screen.
 
 To view a local build instead: the page fetches STLs, so it needs to be served over
 HTTP — `file://` will not work.
 
 ```sh
 python3 -m http.server 8018
-# then open http://localhost:8018/          the 6" cell
-#           http://localhost:8018/?cell=8   the 8" cell
+# then open http://localhost:8018/              the 6" cell
+#           http://localhost:8018/?cell=8       the 8" cell
+#           http://localhost:8018/?cell=6-q20   the 6" cell, 1/4-20 collimation bolts
 ```
 
-`?cell=8` reads `build-8/` instead of `build/`, so run the exporter for that aperture
-first or the page has nothing to fetch. The coupons are shared and always come from
-`build/`.
+`?cell=8` reads `build-8/` instead of `build/`, and `?cell=6-q20` reads `build-6-q20/`, so
+run the exporter for that combination first or the page has nothing to fetch. The coupons
+are shared and always come from `build/`.
 
 Two modes:
 
@@ -177,11 +206,13 @@ material around the bore in the plastic rather than only in the file. See
 
 The rear end was reworked afterwards ([ADR-0002](./docs/adr/0002-both-rear-controls-are-printed-knobs.md)):
 both controls are printed knobs that clear each other radially, the wing nut is gone, and
-all six bolts are 10-24 × 1½″ machine screws. Print one pull knob and press a nut into its
-2.2 mm wall before committing to six. Plate and knob outlines are functional but
-aesthetically provisional.
+all six bolts are 10-24 × 1½″ machine screws by default — the same six can be 1/4-20 with
+`--bolts 1/4-20` ([ADR-0004](./docs/adr/0004-collimation-hardware-is-a-config-option.md)),
+which grows the knobs to Ø19.5 and the mirror plate to 10.1 mm. Print one pull knob and
+press a nut into its 2.2 mm wall before committing to six. Plate and knob outlines are
+functional but aesthetically provisional.
 
-**Nothing of the 8″ cell has been printed at all.** Its 176 checks pass and it shares the
+**Nothing of the 8″ cell has been printed at all.** Its 177 checks pass and it shares the
 6″ cell's measured fits, so the coupon work carries over — but its tube plate is
 237 × 207 mm on a 250 mm bed with only a 5 mm brim, and warp on a plate that size is the
 one risk no assertion covers. Print that plate first.

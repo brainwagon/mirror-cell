@@ -1,7 +1,9 @@
 # Context: Mirror Cell
 
 A 3-point primary mirror cell for a 6" Newtonian, 3D printed, assembled with 10-24
-hardware. Lives in the telescope built by `~/dob` / `~/dob-6-project` (7.75" OD sonotube).
+hardware (the six collimation bolts can be 1/4-20 instead — see ADR-0004 — but the three
+tube-mount inserts are 10-24 in every build). Lives in the telescope built by `~/dob` /
+`~/dob-6-project` (7.75" OD sonotube).
 
 This file is a glossary. It holds terms, not dimensions, decisions, or construction
 details.

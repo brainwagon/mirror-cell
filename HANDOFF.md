@@ -8,7 +8,7 @@ Under git as of 2026-07-31 (16 commits; head `fa302cc`).
 
 ## Where it stands
 
-Design is complete and internally consistent. **176 assertions pass for each cell** (plus
+Design is complete and internally consistent. **177 assertions pass for each cell** (plus
 103 in `test_coupon.py`). Two coupons have been printed and read; no cell part has, in
 either aperture.
 
@@ -25,7 +25,7 @@ python3 -m http.server 8018       # then open http://localhost:8018/  (?cell=8 f
 `--aperture 8` builds an **8.000" × 1.330" mirror in a 10.000" ID tube** from the same
 file, into `build-8/` and `BOM-8.md`. It is the same cell with three numbers changed:
 [ADR-0003](./docs/adr/0003-the-8-inch-cell-is-the-same-cell-parameterised.md) has the
-full derivation. Both cells pass all 176 checks. **Everything below this section is about
+full derivation. Both cells pass all 177 checks. **Everything below this section is about
 the 6" cell** unless it says otherwise — it is the one that has been printed and measured,
 and the 8" inherits all of its measured fits because every fastener is identical.
 
@@ -55,6 +55,39 @@ assertions depend on them. The 6.5 mm bore is drawn nominal and shrinks onto rut
 the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over the
 7.1 mm insert, not the 6.5 mm bore it melts into, which would flatter it at 3.10 mm.
 
+## The collimation hardware is selectable now
+
+`--bolts 1/4-20` builds the same cell with 1/4-20 push/pull bolts instead of 10-24, into
+`build-<ap>-q20/`. The `BOLTS` dict at the top of `mirror_cell.py` is the only place the
+two differ; everything the fastener touches is derived from it.
+[ADR-0004](./docs/adr/0004-collimation-hardware-is-a-config-option.md) has the full
+derivation. The viewer's **Mirror** (6″/8″) and **Collimation bolts** (10-24/1/4-20)
+switches move between the builds without leaving the page — each navigates to the matching
+`?cell=`, keeping the step; the mirror switch drops any `--mirror-thickness` suffix. The CI
+builds all four aperture/bolt combinations so the published site can offer them. Three
+things to know:
+
+- **The tube-mount inserts do NOT switch and must not.** A ruthex 1/4-20 insert is 8.7 mm
+  across and needs a 3.3 mm wall; the 0.500" tube plate gives 2.0 mm. Giving it the wall
+  means a 0.625" plate, which re-opens the axial stack (ADR-0002) for a screw that carries
+  no adjustment.
+- **The derived parts reproduce the 10-24 cell bit for bit** — knob diameters 16/18, budget
+  0.750", cap bore 12.0, plate 0.375". If a change here moves those, it is a bug.
+- **The spring is a different part too** — 10.5 mm OD, and a longer free length to hold the
+  preload the softer rate costs (6" 23 mm, 8" 31 mm). The 9 mm springs only cleared the
+  6.35 mm shank by 0.33–0.43 mm/side, which the leaning pull bolt's ~0.55 mm of sway
+  exceeds. See [ADR-0005](./docs/adr/0005-the-1-4-20-cell-uses-a-larger-bore-spring.md).
+- **`FIT_PRESS` is unverified for 1/4-20, and `test_coupon.py` refuses to run for it.** The
+  fit is an *added* across-flats clearance, and the clearance the nut sees is
+  `fit·(1−S) − AF·S`, so 0.10 leaves ≈0.023 mm at 10-24 but ≈0.010 mm at 1/4-20. A 1/4-20
+  cell needs its own coupon before its pockets are trusted. **This is the 1/4-20 variant's
+  blocking unknown**, exactly as `FIT_SLIP` was for the mirror plate.
+
+All four builds (6"/8" × 10-24/1/4-20) pass the same 177 checks. The two added checks are a
+spring-vs-bolt shank clearance (now against the shank's sway at full tilt, not a static
+0.2 mm) and a solid-vs-solid fan/push-knob test (the old radial fan comparison read as a
+collision at 1/4-20 even though the parts occupy different z-bands).
+
 | Part | Qty | Volume | Notes |
 |---|---|---|---|
 | tube_plate | 1 | 204.7 cc | biggest print, 5½–7 h (measured; see slicer settings) |
@@ -68,10 +101,12 @@ the seated insert: **2.80 mm against a 2.6 mm minimum**, and it is measured over
 **The buy list is generated.** [BOM.md](./BOM.md) — also `build/bom.csv`, and a download
 button in the viewer — is written by `bom()` from the model's own numbers, with a line of
 reasoning on every row. Take that to the shop rather than the summary below, which is here
-only so this page reads as a whole: 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
+only so this page reads as a whole (all six collimation bolts can be 1/4-20 instead — see
+`--bolts`): 6 × 10-24 × 1½" hex-head **machine screws** (not cap screws — see spec §7) ·
 6 × 10-24 hex nuts · 3 × **#4** washers (landing pads — see traps) · 3 springs (0.9 mm wire × 9 mm OD × 20 mm FL
-≈ 13 lb/in) · 3 × 10-24 heat-set inserts · 3 × M3 inserts + M3 cap screws ·
-3 × #10 screws + 1" fender washers · black ABS · RTV silicone.
+≈ 13 lb/in; **10.5 mm OD × 23 mm** at 1/4-20 — see ADR-0005) · 3 × 10-24 heat-set inserts ·
+3 × M3 inserts + M3 cap screws · 3 × #10 screws + 1" fender washers · black ABS · RTV
+silicone.
 
 ## The print blocker, mostly cleared
 

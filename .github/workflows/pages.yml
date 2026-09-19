@@ -34,8 +34,12 @@ jobs:
       - run: pip install build123d==0.11.1
 
       # Same commands as the README. --check is not enough here: the site needs the files.
+      # The 1/4-20 variants are built too, because the viewer offers the bolt-size switch
+      # and a switch that 404s is worse than no switch.
       - run: python3 mirror_cell.py
       - run: python3 mirror_cell.py --aperture 8
+      - run: python3 mirror_cell.py --bolts 1/4-20
+      - run: python3 mirror_cell.py --aperture 8 --bolts 1/4-20
       - run: python3 test_coupon.py
 
       # A stale committed BOM snapshot means the repo disagrees with the model. That is a

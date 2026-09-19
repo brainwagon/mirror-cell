@@ -14,9 +14,12 @@
   #view { position:fixed; inset:0; }
   #panel { position:fixed; top:0; left:0; width:310px; height:100vh; overflow-y:auto;
            padding:18px; background:rgba(28,32,39,.95); border-right:1px solid var(--line);
-           backdrop-filter:blur(8px); }
+           backdrop-filter:blur(8px); z-index:2; }
   h1 { font-size:15px; margin:0 0 2px; }
-  .sub { color:var(--dim); font-size:11.5px; margin-bottom:14px; }
+  .sub { color:var(--dim); font-size:11.5px; margin-bottom:12px; }
+  .picker { margin:0 0 14px; }
+  .picker .lbl { display:block; color:var(--dim); font-size:10.5px; font-weight:600;
+                 text-transform:uppercase; letter-spacing:.09em; margin-bottom:5px; }
   h2 { font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
        margin:16px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--line);
        font-weight:600; }
@@ -57,8 +60,11 @@
                  border-left:2px solid var(--warn); background:rgba(224,122,95,.09);
                  color:#f0c3b4; border-radius:0 4px 4px 0; }
   #stepCaution b { color:var(--warn); }
-  #err { position:fixed; inset:0; display:none; place-content:center; text-align:center;
-         padding:40px; background:var(--bg); }
+  /* The overlay leaves the panel (and so the bolt switch) reachable: if a variant has not
+     been exported, that switch is how you get back to one that has. */
+  #err { position:fixed; top:0; right:0; bottom:0; left:310px; display:none;
+         place-content:center; text-align:center; padding:40px; background:var(--bg);
+         z-index:1; }
 
   /* downloads */
   #dl .row { display:flex; align-items:baseline; gap:6px; padding:3.5px 0;
@@ -85,6 +91,25 @@
        pointed at, so the heading cannot be typed in here. -->
   <h1 id="title">Mirror Cell</h1>
   <div class="sub" id="subtitle">&nbsp;</div>
+
+  <!-- Which mirror and which collimation hardware. Filled in from assembly.json once it
+       loads, but also driven straight off the ?cell= value so they keep working when the
+       directory for the combination you picked has not been exported. -->
+  <div class="picker">
+    <span class="lbl">Mirror</span>
+    <div class="tabs">
+      <button data-aperture="6">6&Prime;</button>
+      <button data-aperture="8">8&Prime;</button>
+    </div>
+  </div>
+
+  <div class="picker">
+    <span class="lbl">Collimation bolts</span>
+    <div class="tabs">
+      <button data-bolts="10-24">10-24</button>
+      <button data-bolts="1/4-20">1/4-20</button>
+    </div>
+  </div>
 
   <div class="tabs">
     <button id="tabBuild" aria-pressed="true">Build it</button>
@@ -127,8 +152,10 @@
     &middot; &larr;/&rarr; to step. Everything here is read from
     <code id="srcPath">assembly.json</code>, written by <code>mirror_cell.py</code>
     &mdash; the instructions, the geometry, the bill of materials, the heading above and
-    the download list all come from the same source. Add
-    <code>?cell=8</code> for the 8&Prime; cell. Coupons are shared by both and come from
+    the download list all come from the same source. The <b>Mirror</b> and
+    <b>Collimation bolts</b> switches above re-point it at another build, or link to one
+    directly with <code>?cell=8</code>, <code>?cell=6-q20</code> or
+    <code>?cell=8-q20</code>. Coupons are shared and come from
     <code>build/coupons.json</code> (<code>test_coupon.py</code>).</div>
 </div>
 
@@ -138,7 +165,7 @@
   over HTTP &mdash; <code>file://</code> will not work &mdash; and the build directory
   for the selected cell must exist.</p>
   <p><code>cd ~/mirror-cell &amp;&amp; python3 mirror_cell.py &amp;&amp; python3 -m http.server 8018</code></p>
-  <p style="color:var(--dim)">For the 8&Prime; cell: <code>python3 mirror_cell.py --aperture 8</code>, then <code>?cell=8</code></p>
+  <p style="color:var(--dim)">For the 8&Prime; cell: <code>python3 mirror_cell.py --aperture 8</code>, then <code>?cell=8</code>. For 1/4-20 collimation bolts: <code>python3 mirror_cell.py --bolts 1/4-20</code>, then <code>?cell=6-q20</code>.</p>
 </div></div>
 
 <script type="importmap">
@@ -267,11 +294,48 @@ const LABEL = {
   springs: 'Springs', push_bolts: 'Push bolts', pull_bolts: 'Pull bolts',
   fan: 'Fan (40 mm, stand-in)', tube: 'Tube (stub)' };
 
-// Which cell to show: ?cell=8 for the 8" one. The exporter writes each cell to its own
-// directory so they cannot overwrite each other, and this is the matching end of that.
+// Which cell to show. The ?cell= value is <aperture>[-t<thickness>][-q20]: ?cell=8 for
+// the 8" one, ?cell=6-q20 for the 1/4-20 collimation bolts, ?cell=8-t1.375 for a blank
+// that is not the assumed thickness. The exporter writes each combination to its own
+// directory so they cannot overwrite each other -- see --aperture/--mirror-thickness/
+// --bolts in mirror_cell.py -- and this is the matching end of that.
 const CELL = new URLSearchParams(location.search).get('cell') || '6';
+const AP_RE = /^(\d+)/;
+const APERTURE = (AP_RE.exec(CELL) || [null, '6'])[1];
+const BOLT_RE = /-q20$/;
+const BOLTS = BOLT_RE.test(CELL) ? '1/4-20' : '10-24';
+const BASE = CELL.replace(BOLT_RE, '');   // <aperture>[-t<thickness>]
 const BUILD = CELL === '6' ? 'build' : 'build-' + CELL;
 document.getElementById('srcPath').textContent = BUILD + '/assembly.json';
+
+// Switching is a navigation, not a scene rebuild: the step lives in the hash, so a reload
+// lands where you were. Read from the URL rather than assembly.json so they still work
+// when the directory for the combination you picked has not been exported -- which is
+// exactly when you need to switch back.
+function navigate(cell) {
+  const q = new URLSearchParams(location.search);
+  q.set('cell', cell);
+  location.href = location.pathname + '?' + q.toString() + location.hash;
+}
+function showPicker(attr, value) {
+  for (const b of document.querySelectorAll(`[data-${attr}]`))
+    b.setAttribute('aria-pressed', String(b.dataset[attr] === value));
+}
+showPicker('aperture', APERTURE);
+showPicker('bolts', BOLTS);
+// The mirror switch drops the -t<thickness> suffix: a thickness variant is the blank a
+// particular aperture actually has, so it does not carry to the other one. The bolt size
+// is orthogonal and does carry.
+for (const b of document.querySelectorAll('[data-aperture]'))
+  b.onclick = () => {
+    if (b.dataset.aperture === APERTURE) return;
+    navigate(b.dataset.aperture + (BOLTS === '1/4-20' ? '-q20' : ''));
+  };
+for (const b of document.querySelectorAll('[data-bolts]'))
+  b.onclick = () => {
+    if (b.dataset.bolts === BOLTS) return;
+    navigate(b.dataset.bolts === '1/4-20' ? BASE + '-q20' : BASE);
+  };
 
 async function build() {
   const A = await (await fetch(BUILD + '/assembly.json')).json();
@@ -287,6 +351,10 @@ async function build() {
   // Only when the cell states one -- see "focal" in assembly().
   if (A.mirror.focal) bits.push(`${inch(A.mirror.focal).toFixed(0)}″ f/${(A.mirror.focal / A.mirror.d).toFixed(2)}`);
   bits.push(`${inch(A.tube.id).toFixed(3)}″ ID tube`);
+  // The mirror and the collimation hardware, stated from the model. The showPicker() calls
+  // keep the switches above agreeing with what was actually built, not just with the URL.
+  showPicker('aperture', md.toFixed(0));
+  if (A.bolt_size) { bits.push(`${A.bolt_size} collimation`); showPicker('bolts', A.bolt_size); }
   document.getElementById('subtitle').textContent = bits.join(' · ');
 
   LABEL.tube = `Tube (${inch(A.tube.od).toFixed(2)}″ OD stub)`;

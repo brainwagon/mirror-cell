@@ -467,6 +467,28 @@ def verify():
 
 if __name__ == "__main__":
     import os
+
+    # The coupon's whole layout -- row pitch, pocket depth, the 100 x 50 shrink gauge -- is
+    # dimensioned around the 10-24 hexes and was printed and read at that size. A 1/4-20 nut
+    # is 7/16" across flats against 3/8", so the ladder does not fit the same plate, and
+    # re-laying it out would move a gauge that has already been measured. Refuse rather than
+    # emit a broken coupon.
+    #
+    # This is also the one fit verify() CANNOT cover: FIT_PRESS is an added across-flats
+    # clearance, and the clearance a nut actually sees is `fit*(1-S) - AF*S`, so the same
+    # 0.10 is proportionally TIGHTER on the larger 1/4-20 hex (~0.010 mm against ~0.023 at
+    # 10-24). A 1/4-20 cell therefore wants its own coupon before its pockets are trusted.
+    if mc.CUSTOM_BOLTS:
+        raise SystemExit(
+            f"test_coupon.py is laid out for 10-24 hexes; --bolts {mc.BOLT_SIZE} would not "
+            f"fit its 100 x 50 mm gauge.\n"
+            f"  The measured FIT_PRESS = {mc.FIT_PRESS:g} mm is an ADDED across-flats "
+            f"clearance, and the\n"
+            f"  clearance the nut sees is fit*(1-S) - AF*S -- so it is proportionally "
+            f"tighter on the\n"
+            f"  larger 1/4-20 hex. Measure a 1/4-20 pocket on a purpose-built coupon "
+            f"before printing\n"
+            f"  the cell. See TEST-COUPON.md.")
     verify()
     print()
     os.makedirs("build", exist_ok=True)

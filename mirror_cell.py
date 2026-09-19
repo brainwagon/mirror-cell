@@ -16,6 +16,7 @@ dimensioned in inches, so inch() converts at the boundary.
     python3 mirror_cell.py --check        # verify only; writes nothing
     python3 mirror_cell.py --aperture 8 --mirror-thickness 1.375
                                           # the blank you actually have -> build-8-t1.375/
+    python3 mirror_cell.py --bolts 1/4-20 # 1/4-20 collimation bolts -> build-6-q20/
 
 --mirror-thickness (inches) replaces the CELLS entry's thickness and nothing else. It is
 refused by verify() if the blank is thinner than the 0.75R argument covers.
@@ -25,13 +26,24 @@ import os
 import sys
 from datetime import date
 from math import (sqrt, cos, sin, tan, radians, degrees, hypot, atan, atan2,
-                  acos, pi)
+                  acos, ceil, pi)
 from pathlib import Path
 from build123d import *
 
 
 def inch(x):
     return x * 25.4
+
+
+def ceil_to(x, step):
+    """Smallest multiple of step at or above x. The round() keeps float dust just under
+    a boundary (11.9999999 for a value that is really 12.0) from rounding a whole step up."""
+    return ceil(round(x / step, 9)) * step
+
+
+def across_corners(af, fit=0.0):
+    """A regular hexagon of across-flats af, plus fit, measured across its corners."""
+    return 2 * (af + fit) / sqrt(3.0)
 
 
 # ---------------------------------------------------------------- PARAMETERS
@@ -60,10 +72,22 @@ def _mirror_thickness():
     return os.environ.get("MIRROR_CELL_MIRROR_T")
 
 
+# Which collimation hardware. Same import-time reasoning as --aperture: every constant
+# below is a module global computed from it, and test_coupon.py inherits the choice.
+def _bolt_size():
+    for i, a in enumerate(sys.argv):
+        if a == "--bolts" and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith("--bolts="):
+            return a.split("=", 1)[1]
+    return os.environ.get("MIRROR_CELL_BOLTS", "10-24")
+
+
 # What differs between the two cells, and NOTHING else does. Every other number in this
-# file is either derived from these or is hardware -- the 10-24 fasteners, the heat-set
-# inserts, the measured fits, the knobs and the 40 mm fan are identical in both cells,
-# which is the whole reason the 8" is a small change rather than a second design.
+# file is either derived from these or is hardware -- the collimation fasteners (a
+# separate choice, see BOLTS), the heat-set inserts, the measured fits, the knobs and the
+# 40 mm fan are identical in both cells, which is the whole reason the 8" is a small
+# change rather than a second design.
 #
 #   moving_n  the moving assembly in newtons, as a stated expectation. verify() computes
 #             it from the solids and checks it against this, so a change that quietly
@@ -71,6 +95,8 @@ def _mirror_thickness():
 #             along with it.
 #   brim      what the plate can actually be given on a 250 mm bed. This is a CONSTRAINT
 #             at 8", not a preference -- see the bed-fit check in verify().
+#   spring    the cell's own spring. A BOLTS entry may override it per aperture when a
+#             larger bolt needs a larger coil bore -- see ADR-0005.
 CELLS = {
     # focal_in is DISPLAY ONLY -- nothing in the cell depends on focal length, and it is
     # optional for exactly that reason: the 8" blank's is not known and inventing one to
@@ -88,19 +114,79 @@ CELLS = {
             moving_n=27.2, brim=5.0, build="build-8", bom="BOM-8.md"),
 }
 
+# The COLLIMATION hardware -- the six push/pull bolts and their nuts. Selected separately
+# from the cell, and independently of it. The tube-mount hardware is NOT here and does not
+# change: the three radial heat-set inserts and the #10 screws into them stay 10-24 in both
+# entries. A 1/4-20 ruthex insert is 8.7 mm across and needs a 0.625" tube plate to keep its
+# 3.3 mm wall, which would re-open the whole axial stack (ADR-0002) for a screw that carries
+# no adjustment. See docs/adr/0004.
+#
+# Everything a collimation fastener touches follows from its entry: the two clearance bores,
+# the hex pockets, the knob diameters that hold those hexes, and the mirror plate's
+# thickness, which must keep a sound floor under the taller 1/4-20 head.
+#
+#   major   the bolt's nominal diameter, AS PRINTED -- the shank a hole must clear
+#   clear   free-fit clearance for that bolt, AS PRINTED (the pull station's working hole)
+#   pass_d  the loose pass-through, AS PRINTED
+#   nut_af  hex nut across flats;  nut_t  its thickness
+#   head_af hex head across flats; head_t its height under the head
+#   knob_budget_in  the radial gap between the push and pull circles the two printed knobs
+#           must fit in. Not free: it is what ADR-0002's radial-clearance argument spends.
+#   spring  None to use the CELLS entry's spring, or a per-aperture replacement. The spring
+#           rides on the bolt shank, so a 6.35 mm 1/4-20 needs a larger coil bore than the
+#           4.83 mm 10-24 the 9 mm springs were chosen for (ADR-0005).
+BOLTS = {
+    "10-24": dict(label="10-24", slug="",
+                  major=inch(0.190), clear=inch(0.2031), pass_d=5.6,
+                  nut_af=inch(0.375), nut_t=inch(0.130),
+                  head_af=inch(0.3125), head_t=inch(0.125),
+                  knob_budget_in=0.750, spring=None),
+    # 7/16" across flats for BOTH the nut and the head, against 3/8" and 5/16" at 10-24, so
+    # the knobs grow to keep their 2 mm wall and the budget grows with them. 0.860" is the
+    # widest the push circle can go inboard before the landing pad eats the strap to the
+    # mirror plate's centre bore, which is the binding constraint at 6".
+    #
+    # The springs are the cell's own 9 mm ones opened up to 10.5 mm OD: same wire, so the
+    # coil bore goes 7.0-7.2 -> 8.5-8.7 mm and clears the 1/4-20 shank with the margin the
+    # 10-24 cell had. A bigger OD makes the spring softer (k ~ 1/D^3), so the force is
+    # bought back with FREE LENGTH, exactly as ADR-0003 did for the 8" cell. Free length is
+    # what sets the preload here; the rate and solid height are inferred from the geometry
+    # (no vendor at this price states a coil count -- see HANDOFF).
+    "1/4-20": dict(label="1/4-20", slug="q20",
+                   major=inch(0.250), clear=inch(0.2656), pass_d=7.1,
+                   nut_af=inch(0.4375), nut_t=inch(0.21875),
+                   head_af=inch(0.4375), head_t=inch(0.15625),
+                   knob_budget_in=0.860,
+                   spring={6: dict(wire=0.9, od=10.5, free=23.0, rate_lb_in=7.8, solid=6.2),
+                           8: dict(wire=1.0, od=10.5, free=31.0, rate_lb_in=7.2, solid=8.0)}),
+}
+
 APERTURE = int(_aperture())
 assert APERTURE in CELLS, f"--aperture must be one of {sorted(CELLS)}, not {APERTURE}"
 CELL = CELLS[APERTURE]
+BOLT_SIZE = _bolt_size()
+assert BOLT_SIZE in BOLTS, f"--bolts must be one of {sorted(BOLTS)}, not {BOLT_SIZE}"
+BOLT = BOLTS[BOLT_SIZE]
 _t = _mirror_thickness()
 MIRROR_T_IN = float(_t) if _t is not None else CELL["mirror_t"]
 assert MIRROR_T_IN > 0, f"--mirror-thickness must be positive, not {MIRROR_T_IN:g}"
-# A thickness other than the cell's own is a VARIANT: it builds into its own directory
-# (build-8-t1.375/, which the viewer opens as ?cell=8-t1.375) and has no committed BOM
-# snapshot, so it can neither overwrite the verified cell's exports nor dirty BOM.md.
+# A thickness or bolt size other than the cell's own is a VARIANT: it builds into its own
+# directory (build-8-t1.375/, build-6-q20/) and has no committed BOM snapshot, so it can
+# neither overwrite the verified cell's exports nor dirty BOM.md.
 CUSTOM_T = MIRROR_T_IN != CELL["mirror_t"]
-BUILD = (f"build-{APERTURE}-t{MIRROR_T_IN:g}" if CUSTOM_T
-         else CELL["build"])  # every written path hangs off this, so no two cells
-BOM_PATH = None if CUSTOM_T else CELL["bom"]  # can overwrite each other's exports
+CUSTOM_BOLTS = BOLT_SIZE != "10-24"
+CUSTOM = CUSTOM_T or CUSTOM_BOLTS
+# Every written path hangs off BUILD, so no two cells or variants can overwrite each
+# other's exports. A variant names its aperture explicitly even when the default cell
+# directory does not: build-6-q20/ next to build/ is unambiguous.
+BUILD = CELL["build"]
+if CUSTOM:
+    BUILD = f"build-{APERTURE}"
+    if CUSTOM_T:
+        BUILD += f"-t{MIRROR_T_IN:g}"
+    if CUSTOM_BOLTS:
+        BUILD += f"-{BOLT['slug']}"
+BOM_PATH = None if CUSTOM else CELL["bom"]
 BRIM = CELL["brim"]
 
 # The whole cell as one download. The name carries the cell AND the day it was built,
@@ -108,7 +194,9 @@ BRIM = CELL["brim"]
 # the printer -- and once it has, the filename is the only thing left saying which cell it
 # holds and how old it is. build/ is gitignored, so a new name each day costs the repo
 # nothing, and the exporter sweeps the cell's older zips rather than piling them up.
-BUNDLE_STEM = f"mirror-cell-{APERTURE}in" + (f"-t{MIRROR_T_IN:g}" if CUSTOM_T else "")
+BUNDLE_STEM = (f"mirror-cell-{APERTURE}in"
+               + (f"-t{MIRROR_T_IN:g}" if CUSTOM_T else "")
+               + (f"-{BOLT['slug']}" if CUSTOM_BOLTS else ""))
 BUNDLE_DATE = date.today().strftime("%Y-%m-%d")
 BUNDLE = f"{BUNDLE_STEM}-{BUNDLE_DATE}.zip"
 
@@ -129,24 +217,23 @@ STATIONS = (90.0, 210.0, 330.0)
 # on the inch figure keeps the 6" cell's geometry bit-identical to what it was before the
 # 8" existed.
 R_PULL = inch(0.375 * CELL["mirror_d"])
-# The push circle does NOT scale. Its distance inboard of the pull circle is set by the
-# two knobs having to clear each other radially (ADR-0002), and the knobs are the same
-# size in both cells because the hardware inside them is. 0.750" gives the same 2.05 mm
-# gap at 8" that it gives at 6".
-KNOB_BUDGET_IN = 0.750
+# The push circle does NOT scale with the mirror. Its distance inboard of the pull circle
+# is set by the two knobs having to clear each other radially (ADR-0002), and that budget
+# is a property of the hardware inside them, not of the glass -- so it comes from the BOLTS
+# entry and is the same at 6" and 8". 0.750" at 10-24 gives the same 2.05 mm gap in both
+# cells; 1/4-20 spends 0.860" on its larger knobs.
+KNOB_BUDGET_IN = BOLT["knob_budget_in"]
 R_PUSH = inch(0.375 * CELL["mirror_d"] - KNOB_BUDGET_IN)
 
 # --- axial stack (spec §4) ---------------------------------------------------
 TUBE_PLATE_T = inch(0.500)
 PLATE_GAP = inch(0.600)  # nominal; wing nuts set the real value
-# RESOLVED at 0.375", and pinned by the BOLTS, not by stiffness. The pull bolt's head is
-# captured in this plate with its nut outside at the rear, so every millimetre of
-# thickness comes straight off the thread the nut runs on. At 0.500" with the same 1.5"
-# bolts the thread runs out +0.23 mm past nominal instead of +3.41 mm -- one collimation
-# and no second chance. Restoring the range needs 1.625" pull bolts, which breaks the
-# one-length rule below; 1.75" overshoots and the spring goes slack first. Verified by
-# running all three. Do not thicken this plate without re-opening ADR-0002.
-MIRROR_PLATE_T = inch(0.375)
+# MIRROR_PLATE_T is NOT set here. It follows the pull-bolt head -- a taller head cuts a
+# deeper pocket, and the plate must keep a sound floor under it -- so it is derived with
+# the rest of the mirror-plate detail below. It is also pinned by BOLT LENGTH, not by
+# stiffness: the head is captured in this plate with its nut outside at the rear, so every
+# millimetre of thickness comes straight off the thread the nut runs on. Do not thicken it
+# beyond what the floor needs without re-opening ADR-0002.
 RTV_T = inch(0.0625)  # bond thickness, set by the printed shims
 CLIP_GAP = inch(0.030)  # clip -> mirror front face
 POST_GAP = inch(0.030)  # centering post -> mirror edge, radial
@@ -223,16 +310,17 @@ TUBE_OD = TUBE_ID + 2 * TUBE_WALL          # 7.750", matching the real sonotube
 TUBE_REAR_OF_PLATE = inch(3.65)            # from the tube plate's MID-PLANE, rearward
 TUBE_FWD_OF_MIRROR = inch(2.0)             # above the mirror's front surface
 
-# --- 10-24 hardware ----------------------------------------------------------
-BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24, AS PRINTED -- not as drawn
-# This stock clearance -- 0.166 mm per side, chosen for nothing but free fit -- is also
-# what sets the COLLIMATION RANGE, and it is the tightest limit in the adjustment chain.
-# The pull bolt's head is clamped flat on the mirror plate's floor, so the whole mirror
-# tilt shows up as bolt tilt in the tube plate's hole, guided over TUBE_PLATE_T less the
-# spring seat. That is +/-1.62 deg (97 arcmin), +/-2.42 mm at one station -- against 2.51
-# deg the spring would allow. Ample: one knob turn is 42 arcmin. Derivation and the
-# tripwires are in spec section 7; TILT_MAX in verify() is a separate and deliberately
-# conservative envelope, not this number.
+# --- collimation hardware (the selected BOLTS entry) -------------------------
+# These are the six push/pull bolts and their nuts, read from BOLTS. The three tube-mount
+# inserts below are separate hardware and stay 10-24 whatever is selected here.
+BOLT_CLEAR_D = BOLT["clear"]  # free-fit clearance, AS PRINTED -- not as drawn
+# This stock clearance -- 0.166 mm per side at 10-24, chosen for nothing but free fit -- is
+# also what sets the COLLIMATION RANGE, and it is the tightest limit in the adjustment
+# chain. The pull bolt's head is clamped flat on the mirror plate's floor, so the whole
+# mirror tilt shows up as bolt tilt in the tube plate's hole, guided over TUBE_PLATE_T less
+# the spring seat. The range it gives is computed by pull_bolt_tilt() and checked against
+# the requirement below; TILT_MAX in verify() is a separate and deliberately conservative
+# envelope, not this number.
 #
 # READ AS PRINTED, WHICH IS THE CHANGE. This used to be the diameter DRAWN, and the first
 # tube plate came off the bed with these holes at 0.19" -- the bolt's own major diameter,
@@ -246,10 +334,13 @@ BOLT_CLEAR_D = inch(0.2031)  # free-fit clearance for 10-24, AS PRINTED -- not a
 # 85.7 mm station lever and still leave most of the range in hand, where collimation itself
 # needs arcminutes. Raise it and verify() says whether the holes still oblige.
 TILT_NEEDED = 0.5
-NUT_AF = inch(0.375)  # 10-24 hex nut across flats
-NUT_T = inch(0.130)
-HEAD_AF = inch(0.3125)  # 10-24 hex head across flats
-HEAD_T = inch(0.125)
+NUT_AF = BOLT["nut_af"]    # hex nut across flats
+NUT_T = BOLT["nut_t"]
+HEAD_AF = BOLT["head_af"]  # hex head across flats
+HEAD_T = BOLT["head_t"]
+# How much deeper than the head its captured pocket is cut, so the head cannot bottom and
+# the cap never presses on it. It comes straight off the plate's floor; see MIRROR_PLATE_T.
+HEAD_CLEAR = 0.4
 # Clearance added across flats of a hex pocket. MEASURED on coupon_fit, 2026-07-28: on
 # the 0.10 rung a 10-24 nut seats flat, will not rotate by hand and leaves the wall
 # unwhitened -- all three acceptance criteria. The gauge outline came off the bed at
@@ -265,6 +356,11 @@ FIT_SLIP = 0.20    # captured pull-bolt head. CONFIRM ON THE COUPON BEFORE PRINT
                    # THE MIRROR PLATE -- rung 0.20, row H.
 FIT = FIT_PRESS    # default for hex_prism(); every call site passes one explicitly
 
+# --- tube-mount hardware: ALWAYS 10-24 ---------------------------------------
+# The three radial heat-set inserts the tube screws pull into. Deliberately NOT switched by
+# --bolts: a 1/4-20 insert is 8.7 mm across and the 0.500" tube plate cannot give it the
+# 3.3 mm wall ruthex asks for, so switching them would force a thicker plate and re-open the
+# whole axial stack (ADR-0004).
 INSERT_BORE_D = 6.5  # 10-24 heat-set insert
 INSERT_DEPTH = 14.0
 # Vendor data for ruthex RX-10-24x9.5, the insert this bore is dimensioned around. Here
@@ -322,24 +418,27 @@ def printed_hole(drawn_d):
 #     force it through is a defect at the worst possible moment;
 #   - the pull knob's through bore: it exists so tightening has somewhere to put the bolt.
 #
-# 0.39 mm per side, against 0.17 at the pull station. A bolt drops through it unaimed.
-BOLT_PASS_D = 5.6                          # as printed, again
-PULL_HOLE_D = drawn_hole(BOLT_CLEAR_D)     # ~5.50 drawn -> 5.16 printed
-PASS_HOLE_D = drawn_hole(BOLT_PASS_D)      # ~5.95 drawn -> 5.60 printed
+# It is a comfortable margin over the bolt at both sizes, against the pull station's tight
+# one. A bolt drops through it unaimed.
+BOLT_PASS_D = BOLT["pass_d"]                 # as printed, again
+PULL_HOLE_D = drawn_hole(BOLT_CLEAR_D)     # drawn oversize -> prints at BOLT_CLEAR_D
+PASS_HOLE_D = drawn_hole(BOLT_PASS_D)      # drawn oversize -> prints at BOLT_PASS_D
 
 # --- landing pads ------------------------------------------------------------
-# A #4 washer, NOT a #10 one, and the bore is the whole point. This was a #10 washer --
-# 0.500" OD on a 0.2031" bore -- which is BOLT_CLEAR_D, the free-fit clearance for the
-# very bolt it is supposed to stop. The push bolt is coaxial with it, so the tip passed
-# straight through the hole with 0.166 mm to spare and landed on the plastic floor of the
-# recess: the pad did nothing, and the bolt bore on ABS over a SMALLER area than if the
+# A #4 washer, NOT one sized for the bolt, and the bore is the whole point. This was a
+# full-size washer -- 0.500" OD on a 0.2031" bore -- whose bore IS BOLT_CLEAR_D, the
+# free-fit clearance for the very bolt it is supposed to stop. The push bolt is coaxial
+# with it, so the tip passed straight through the hole and landed on the plastic floor of
+# the recess: the pad did nothing, and the bolt bore on ABS over a SMALLER area than if the
 # recess had not been there at all. Named PAD_*, not WASHER_*, so nobody reaches for
-# BOLT_CLEAR_D again -- a pad sized for the bolt cannot stop the bolt.
+# BOLT_CLEAR_D again -- a pad sized for the bolt cannot stop the bolt. The same #4 works
+# for 1/4-20: its 0.125" bore is under both bolts' points, and the bigger point only rests
+# on more of the washer.
 PAD_OD = inch(0.3125)  # #4 flat washer
 PAD_ID = inch(0.125)   # must be smaller than the bolt's point, and is asserted to be
 PAD_T = inch(0.032)
 
-BOLT_MAJOR_D = inch(0.190)  # 10-24 major diameter
+BOLT_MAJOR_D = BOLT["major"]  # bolt major diameter, as printed
 # A machine screw's end is chamfered, so the flat that actually lands on the pad is
 # smaller than the major diameter. 0.85 is the conservative end of what that chamfer
 # leaves; the assertion uses it so the pad is sized against the worst screw, not the best.
@@ -349,29 +448,35 @@ BOLT_POINT_D = BOLT_MAJOR_D * 0.85
 # nuisance to source. See docs/adr/0002: both rear controls are printed knobs sized to
 # clear each other RADIALLY, which is what makes 1-1/2" enough. The old 2" length existed
 # only to drop a 30 mm knob below a wing nut, and that clearance depended on where the
-# adjusters happened to be set. Buy MACHINE SCREWS -- #10 hex cap screws carry an
-# unthreaded shank about 19 mm long, exactly where the captured nut needs thread.
+# adjusters happened to be set. Buy MACHINE SCREWS -- a hex CAP screw carries an unthreaded
+# shank about 19 mm long (longer on 1/4-20), exactly where the captured nut needs thread.
+# 1-1/2" still gives the 1/4-20 pull bolt positive thread range past its taller nut; verify()
+# checks it rather than trusting the arithmetic here.
 PUSH_BOLT_L = inch(1.5)
 PULL_BOLT_L = inch(1.5)
 
-# The one purchased item that is NOT the same in both cells. 8" x 1.33" glass is 2574 g
-# against the 6" cell's 1089, and the preload has to follow it: three springs must hold
-# the moving assembly against its stop in any tube orientation, at about 2x its weight.
+# The purchased spring, and it is NOT the same in every build. It differs by cell -- 8" x
+# 1.33" glass is 2574 g against the 6" cell's 1089, and the preload has to follow it: three
+# springs must hold the moving assembly against its stop in any tube orientation, at about
+# 2x its weight -- and, at 1/4-20, by bolt: the spring rides on the shank, so the coil bore
+# has to clear a 6.35 mm bolt where 4.83 mm did. See ADR-0005.
 #
+# The cell's own spring is in CELLS; a bolt that needs a different one overrides it there.
 # Answered with FREE LENGTH rather than rate. The seat and the plate gap eat a fixed
 # 16.24 mm of any spring put here, so a longer one is compressed further and makes more
 # force at the same stiffness: 25 mm gives 8.76 mm of compression against 3.76, which
 # reaches 2x preload with a spring no stiffer than the 6" cell's. Buying the force as
 # rate instead would have meant ~27.5 lb/in and roughly double the knob torque, on a
 # fluted ABS knob that HANDOFF already calls this design's weakest point.
-SPRING_OD = CELL["spring"]["od"]
-SPRING_WIRE_D = CELL["spring"]["wire"]
-SPRING_FREE_L = CELL["spring"]["free"]
-SPRING_RATE_LB_IN = CELL["spring"]["rate_lb_in"]
+SPRING = BOLT["spring"][APERTURE] if BOLT["spring"] else CELL["spring"]
+SPRING_OD = SPRING["od"]
+SPRING_WIRE_D = SPRING["wire"]
+SPRING_FREE_L = SPRING["free"]
+SPRING_RATE_LB_IN = SPRING["rate_lb_in"]
 SPRING_RATE = SPRING_RATE_LB_IN * 4.4482 / 25.4   # N/mm
 # Coils stacked solid. Not derived -- no vendor at this price states an active coil count
 # (see HANDOFF), so it is read off the geometry and checked against the plate gap.
-SPRING_SOLID_H = CELL["spring"]["solid"]
+SPRING_SOLID_H = SPRING["solid"]
 SPRING_SEAT_D = SPRING_OD + 0.8
 # 1.0, not 2.5. The seat lengthens the spring's span, so every millimetre of it is a
 # millimetre of preload thrown away: at 2.5 the cell made 1.16 lb per station against the
@@ -423,25 +528,43 @@ RTV_WELL_DEPTH = 1.0
 # CANNOT be a precision fit: the bore is wide enough to leave a real ledge under the disc,
 # and the disc is a loose clearance fit that is bedded in a spot of RTV during glue-up.
 # (At 10.0 the ledge was 0.27 mm at the hex corners -- the disc could drop through.)
-CAP_D = 12.0        # counterbore in the mirror plate
+# Derived from the head, because the head has to pass through it during assembly and leave
+# a ledge the disc cannot fall past: a 1/4-20 head is 12.95 mm across corners against the
+# 10-24's 9.40, so the counterbore opens from 12 to 16 mm. CAP_LEDGE is the diametral
+# margin, 2.6 mm at 10-24 -- which is what the drawn 12.0 already was.
+CAP_LEDGE = 2.6
+CAP_D = ceil_to(across_corners(HEAD_AF, FIT_SLIP) + CAP_LEDGE, 0.5)
 CAP_CLEAR = 0.5     # diametral clearance: the disc must always drop in
 CAP_T = 1.5
+
+# The plate must leave a sound floor under the pull-bolt head pocket: that floor carries
+# the mirror's weight and the spring's sustained preload, so it is held at MP_FLOOR_MIN.
+# The 1/4-20 head is taller than the 10-24's and cuts a deeper pocket, so the plate thickens
+# to keep the floor -- the mirror, the posts and the cell do not otherwise change. The 6"
+# cell's 0.375" already clears the floor, so its plate is untouched. Thickening also eats
+# the pull bolt's thread range, which verify() checks; 1-1/2" still leaves it positive.
+MP_FLOOR_MIN = 3.2
+MIRROR_PLATE_T = max(inch(0.375),
+                     ceil_to(RTV_WELL_DEPTH + CAP_T + HEAD_T + HEAD_CLEAR + MP_FLOOR_MIN, 0.1))
 
 # What is left under the pull-bolt head after the RTV well, the cap and the head pocket
 # are stacked into the plate. This carries the mirror's weight, and it is the number the
 # slicer note quotes -- derived, so thickening or thinning the plate cannot leave the
 # printing advice claiming a floor the part no longer has.
-MP_FLOOR = MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T - (HEAD_T + 0.4)
+MP_FLOOR = MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T - (HEAD_T + HEAD_CLEAR)
 
 # --- knobs (spec 8.5, docs/adr/0002) -----------------------------------------
 # Both rear controls are printed. That is what lets them clear each other RADIALLY --
 # an invariant that holds no matter how the adjusters are set, unlike the axial escape
-# it replaces. The whole budget is R_PULL - R_PUSH = 19.05 mm, split so the two walls
-# come out equal: the Pull knob captures a NUT (11.11 mm across corners), the Push knob
-# only a HEAD (9.28), so the pull knob needs the larger diameter to match walls.
-PUSH_KNOB_D = 16.0
-PULL_KNOB_D = 18.0
-KNOB_T = 14.0
+# it replaces. The whole budget is R_PULL - R_PUSH, from the BOLTS entry, split so the two
+# walls come out equal: the Pull knob captures a NUT, the Push knob only a HEAD, so the pull
+# knob needs the larger diameter to match walls.
+#
+# The diameters are not free: each is the smallest that leaves KNOB_WALL_MIN of material at
+# a flute over the hex it captures, rounded up to the next 0.5 mm. At 10-24 that reproduces
+# the 16/18 the cell has always had, bit for bit; at 1/4-20 both hexes are 7/16" across
+# flats and both knobs come out 19.5.
+KNOB_WALL_MIN = 2.0
 # Flutes are cut by cylinders centred OUTSIDE the rim, so depth is set directly instead
 # of being half the cutter diameter -- at the old sizes a 6 mm cutter cut 3 mm deep and
 # would have left 0.36 mm of wall here. 12 of them, phased so six land on the hex flats;
@@ -449,6 +572,20 @@ KNOB_T = 14.0
 KNOB_FLUTES = 12
 KNOB_FLUTE_D = 5.0
 KNOB_FLUTE_DEPTH = 1.2
+
+
+def _knob_d(af):
+    """Smallest knob OD that leaves KNOB_WALL_MIN at a flute over a hex of across-flats af."""
+    return ceil_to(2 * KNOB_FLUTE_DEPTH + across_corners(af, FIT_PRESS)
+                   + 2 * KNOB_WALL_MIN, 0.5)
+
+
+PUSH_KNOB_D = _knob_d(HEAD_AF)
+PULL_KNOB_D = _knob_d(NUT_AF)
+# The pull knob's wall, quoted in its print note so the advice tracks the hardware.
+PULL_KNOB_WALL = (PULL_KNOB_D - 2 * KNOB_FLUTE_DEPTH
+                  - across_corners(NUT_AF, FIT_PRESS)) / 2
+KNOB_T = 14.0
 # Nut stands proud of the pull knob's face, so steel bears on the tube plate and the
 # printed body never touches it -- exactly the contact the wing nut used to make.
 PULL_NUT_PROUD = 0.4
@@ -573,7 +710,7 @@ def mirror_plate():
         p -= at(a, R_PULL, well_z) * extrude(Circle(RTV_WELL_D / 2), RTV_WELL_DEPTH)
         cap_z = well_z - CAP_T
         p -= at(a, R_PULL, cap_z) * extrude(Circle(CAP_D / 2), CAP_T)
-        head_h = HEAD_T + 0.4
+        head_h = HEAD_T + HEAD_CLEAR
         p -= at(a, R_PULL, cap_z - head_h) * hex_prism(HEAD_AF, head_h, fit=FIT_SLIP)
 
         # No spring seat on this face. Cutting one here would leave only 0.95 mm of ABS
@@ -627,8 +764,8 @@ def push_knob():
     k = _fluted(PUSH_KNOB_D, KNOB_T)
     # CAPTURES its head rather than accepting it during a timed assembly step, so it
     # takes the press value even though the pocket is head-sized.
-    k -= Pos(0, 0, KNOB_T - (HEAD_T + 0.4)) * hex_prism(HEAD_AF, HEAD_T + 0.4,
-                                                        fit=FIT_PRESS)
+    k -= Pos(0, 0, KNOB_T - (HEAD_T + HEAD_CLEAR)) * hex_prism(
+        HEAD_AF, HEAD_T + HEAD_CLEAR, fit=FIT_PRESS)
     # No bore behind the pocket. The shank leaves through the pocket's own opening, which
     # is the knob's plate-facing face, so a clearance hole here would only be a hole out
     # the back -- invisible at ø30, an eyesore at ø16. Blind means a head pressed in is
@@ -638,7 +775,7 @@ def push_knob():
 
 
 def pull_knob():
-    """Rear control on a Pull bolt -- replaces the wing nut. Captures a plain 10-24 hex
+    """Rear control on a Pull bolt -- replaces the wing nut. Captures a plain hex
     nut in its FRONT face, PULL_NUT_PROUD shallower than the nut is thick, so the steel
     bears on the tube plate and this printed body never touches it. An ABS face rotating
     on an ABS face under sustained tension is the one loading this design refuses.
@@ -655,9 +792,9 @@ def pull_knob():
 
 
 def hex_nut():
-    """The captured 10-24 nut. Modelled so the assembly sequence can show it going in."""
+    """The captured hex nut. Modelled so the assembly sequence can show it going in."""
     n = extrude(RegularPolygon(radius=NUT_AF / sqrt(3.0), side_count=6), NUT_T)
-    n -= extrude(Circle(inch(0.190) / 2), NUT_T)
+    n -= extrude(Circle(BOLT_MAJOR_D / 2), NUT_T)
     return n
 
 
@@ -693,7 +830,7 @@ def pull_bolt_tilt(as_printed=True):
 
 
 def hex_head():
-    """A 10-24 hex head, for checking that one seats in a pocket drawn for it.
+    """A hex head, for checking that one seats in a pocket drawn for it.
 
     Not a printed part and not in PARTS -- it exists so the checks can put real hardware
     into a real recess instead of comparing across-flats numbers. verify() here and
@@ -780,7 +917,7 @@ Z_MIRROR = Z_MP + MIRROR_PLATE_T + RTV_T  # mirror back face
 Z_CAP = Z_MP + MIRROR_PLATE_T - RTV_WELL_DEPTH - CAP_T
 # Bearing face of the captured pull-bolt head: the hex pocket FLOOR. Bolt length is
 # measured from under the head (the standard datum), so the tip is this minus the length.
-Z_PULL_HEAD_FACE = Z_CAP - (HEAD_T + 0.4)
+Z_PULL_HEAD_FACE = Z_CAP - (HEAD_T + HEAD_CLEAR)
 
 # Tube stub ends. Rear is measured from the tube plate's MID-PLANE (the plate is what
 # locates the cell in the tube); front from the mirror's front SURFACE, not its back.
@@ -820,9 +957,9 @@ def sequence():
          "cell \u2014 mirror, plates and hardware.", None,
          pose(home=tp)),
         ("Tube plate: press in the captured nuts",
-         "Press a 10-24 hex nut into each of the three pockets on the FORWARD face. "
-         "They face inward deliberately: a push bolt's reaction drives its nut rearward, "
-         "into solid plastic, so the load is pure compression.",
+         f"Press a {BOLT['label']} hex nut into each of the three pockets on the FORWARD "
+         "face. They face inward deliberately: a push bolt's reaction drives its nut "
+         "rearward, into solid plastic, so the load is pure compression.",
          "Do this now. Once the plates are mated you cannot reach these pockets. After a "
          "bolt is threaded in, the nut is captive for good.",
          pose(home=tp + ["hex_nut"])),
@@ -831,9 +968,10 @@ def sequence():
          "clips at the very end.", None,
          pose(home=tp + ["hex_nut"], up=["mirror_plate"])),
         ("Mirror plate: fit the pull bolts",
-         "Drop a 10-24 \u00d7 1\u00bd\u2033 hex-head screw into each hex pocket from the FRONT "
-         "face, head first. The pocket stops it turning; the head bears on the pocket "
-         "floor in compression, which is the one loading ABS does not creep under.", None,
+         f"Drop a {BOLT['label']} \u00d7 {PULL_BOLT_L / 25.4:g}\u2033 hex-head screw into "
+         "each hex pocket from the FRONT face, head first. The pocket stops it turning; "
+         "the head bears on the pocket floor in compression, which is the one loading ABS "
+         "does not creep under.", None,
          pose(home=tp + ["hex_nut"], up=["mirror_plate", "pull_bolts"])),
         ("Cap the bolt pockets",
          "Drop a cap over each bolt head and bed it in a spot of RTV, flush with the "
@@ -842,11 +980,11 @@ def sequence():
          "Without the caps, silicone runs into the hex and glues the bolt head in.",
          pose(home=tp + ["hex_nut"], up=["mirror_plate", "pull_bolts", "pocket_cap"])),
         ("Drop in the landing pads",
-         "A #4 washer into each recess on the REAR face -- a #4 under a #10 bolt, on "
-         "purpose. These are what the push bolt tips bear on. Steel on steel, so no bolt "
-         "ever embosses the plastic and walks the collimation. A #10 washer would be the "
-         "obvious thing to reach for and would be useless: its bore clears a #10 bolt, "
-         "which is exactly what a landing pad must not do.", None,
+         f"A #4 washer into each recess on the REAR face -- a #4 under a {BOLT['label']} "
+         "bolt, on purpose. These are what the push bolt tips bear on. Steel on steel, so "
+         "no bolt ever embosses the plastic and walks the collimation. A washer sized for "
+         "the bolt would be the obvious thing to reach for and would be useless: its bore "
+         "clears the bolt, which is exactly what a landing pad must not do.", None,
          pose(home=tp + ["hex_nut"],
               up=["mirror_plate", "pull_bolts", "pocket_cap", "washer"])),
         ("Glue the mirror",
@@ -874,8 +1012,8 @@ def sequence():
          "three bolts pass through the tube plate.", None,
          pose(home=tp + ["hex_nut", "springs"] + [k for k in MP_KIDS if k != "shim"])),
         ("Pull knobs",
-         "Press a 10-24 hex nut into the face of each pull knob — it stands 0.4 mm "
-         "proud on purpose — then run the three knobs onto the pull bolts from the "
+         f"Press a {BOLT['label']} hex nut into the face of each pull knob — it stands "
+         "0.4 mm proud on purpose — then run the three knobs onto the pull bolts from the "
          "rear. The nut bears on the plate; the printed body never touches it.",
          "If the printed face touches the plate, the nut is in too deep. ABS turning on "
          "ABS under tension creeps, and the collimation goes with it.",
@@ -1029,9 +1167,9 @@ PRINT = {
                   "Blind hex pocket for a bolt HEAD. Pressing a head in is one-way -- "
                   "there is no bore behind it to push against."),
     "pull_knob": (Slice(100, walls=4, solid=5),
-                  "Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE "
-                  "FIRST and press a nut in: the pocket sits in a 2.2 mm wall, and the "
-                  "0.10 mm fit was measured in a 6 mm plate."),
+                  f"Hex pocket for a NUT, deliberately shallower than the nut. PRINT ONE "
+                  f"FIRST and press a nut in: the pocket sits in a {PULL_KNOB_WALL:.1f} mm "
+                  f"wall, and the 0.10 mm fit was measured in a 6 mm plate."),
     "pocket_cap": (Slice(100),
                    "A loose fit on purpose -- bedded in a spot of RTV, so there is no "
                    "press fit to dial in."),
@@ -1450,13 +1588,13 @@ def purchased(total_cc=None):
     the way a hand-maintained table does."""
     preload = (SPRING_FREE_L - (PLATE_GAP + SPRING_SEAT_DEPTH)) * SPRING_RATE / 4.4482
     return [
-        {"qty": 6, "item": "10-24 hex-head MACHINE screw",
+        {"qty": 6, "item": f"{BOLT['label']} hex-head MACHINE screw",
          "spec": f"{PUSH_BOLT_L / 25.4:g}\" long ({PUSH_BOLT_L:.1f} mm), zinc or stainless",
-         "note": "Machine screws, NOT hex cap screws: a #10 cap screw carries an "
-                 "unthreaded shank about 19 mm long, exactly where the captured nut in "
-                 "the tube plate needs thread. One length for all six, and a 1/2\" "
-                 "multiple, because odd lengths are a nuisance to source."},
-        {"qty": 6, "item": "10-24 hex nut",
+         "note": f"Machine screws, NOT hex cap screws: a {BOLT['label']} cap screw "
+                 "carries an unthreaded shank where the captured nut in the tube plate "
+                 "needs thread. One length for all six, and a 1/2\" multiple, because odd "
+                 "lengths are a nuisance to source."},
+        {"qty": 6, "item": f"{BOLT['label']} hex nut",
          "spec": f"{NUT_AF / 25.4:g}\" across flats, {NUT_T / 25.4:g}\" thick",
          "note": "Three press into the tube plate's forward face (captured, for the push "
                  "bolts), three press into the pull knobs. Identical parts -- the pull "
@@ -1464,12 +1602,12 @@ def purchased(total_cc=None):
         {"qty": 3, "item": "#4 flat washer (landing pad)",
          "spec": f"{PAD_OD / 25.4:g}\" OD, {PAD_ID / 25.4:g}\" bore, "
                  f"{PAD_T / 25.4:g}\" thick",
-         "note": "A #4 washer under a #10 bolt, and that is NOT a typo. What the "
-                 "push-bolt tips bear on -- steel on steel, so no bolt ever embosses the "
-                 "plastic and walks the collimation. The bore has to be SMALLER than the "
-                 "bolt's point or the pad does nothing: a #10 washer's 0.2031\" bore is "
-                 "free-fit clearance for a #10 bolt, so the tip drops through it and "
-                 "lands on plastic. The 0.125\" bore here is what the point rests on."},
+         "note": f"A #4 washer under a {BOLT['label']} bolt, and that is NOT a typo. "
+                 "What the push-bolt tips bear on -- steel on steel, so no bolt ever "
+                 "embosses the plastic and walks the collimation. The bore has to be "
+                 "SMALLER than the bolt's point or the pad does nothing: a washer sized "
+                 "for the bolt has a free-fit clearance bore, so the tip drops through it "
+                 "and lands on plastic. The 0.125\" bore here is what the point rests on."},
         {"qty": 3, "item": "Compression spring",
          "spec": f"{SPRING_WIRE_D:g} mm wire x {SPRING_OD:g} mm OD x "
                  f"{SPRING_FREE_L:g} mm free length (~{SPRING_RATE_LB_IN:g} lb/in)",
@@ -1484,7 +1622,9 @@ def purchased(total_cc=None):
                  f"same preload."},
         {"qty": 3, "item": "10-24 heat-set insert",
          "spec": f"{INSERT_BORE_D:g} mm bore x {INSERT_DEPTH:g} mm",
-         "note": "Radial, in the tube plate rim, at mid-thickness. These three screws "
+         "note": "ALWAYS 10-24, whichever collimation bolts are selected -- a 1/4-20 "
+                 "insert does not fit the 0.500\" tube plate (ADR-0004). "
+                 "Radial, in the tube plate rim, at mid-thickness. These three screws "
                  "carry the entire cell -- mirror, plates and hardware. Dimensioned "
                  "around [ruthex RX-10-24x9.5](https://www.ruthex.de/en/products/"
                  "ruthex-10-24-gewindeeinsatz-zoll-unc-50-stuck-rx-10-24x9-5-"
@@ -1556,12 +1696,13 @@ def bom_markdown(rows):
     out = [
         f"# Bill of materials — {CELL['mirror_d']:g}\" mirror cell",
         "",
-        *([f"Generated by `mirror_cell.py --aperture {APERTURE} --mirror-thickness "
-           f"{MIRROR_T_IN:g}`,",
-           f"which writes it to `{BUILD}/`. A thickness variant has no committed",
-           "snapshot. Every number comes from the model — quantities are counted off the",
-           "assembly, dimensions read from the parameters — so **regenerate this file",
-           "rather than editing it**."] if CUSTOM_T else
+        *([f"Generated by `mirror_cell.py --aperture {APERTURE}"
+           + (f" --mirror-thickness {MIRROR_T_IN:g}" if CUSTOM_T else "")
+           + (f" --bolts {BOLT_SIZE}" if CUSTOM_BOLTS else "") + "`,",
+           f"which writes it to `{BUILD}/`. A variant has no committed snapshot. Every",
+           "number comes from the model — quantities are counted off the assembly,",
+           "dimensions read from the parameters — so **regenerate this file rather than",
+           "editing it**."] if CUSTOM else
           [f"Generated by `mirror_cell.py --aperture {APERTURE}`, which writes it to",
            f"`{BUILD}/` and commits this copy as `{BOM_PATH}`. Every number comes from the",
            "model — quantities are counted off the assembly, dimensions read from the",
@@ -1680,6 +1821,9 @@ def assembly():
             "mirror_back": Z_MIRROR, "mirror_front": Z_MIRROR + MIRROR_T,
             "clip_underside": Z_MP + MIRROR_PLATE_T + POST_H,
         },
+        # The collimation hardware this build was made with, so the viewer can state it and
+        # offer the switch between sizes from the model rather than from the directory name.
+        "bolt_size": BOLT["label"],
         "sequence": sequence(),
         "parts": parts,
         "downloads": dl,
@@ -1713,10 +1857,10 @@ def assembly():
             # z_head is the head's BEARING FACE; the head sits on the far side of it
             # from the tip. Push: head rearward, into the knob. Pull: head forward,
             # captured in the mirror plate. Getting this backwards flips the bolt.
-            {"name": "push_bolts", "kind": "push", "r": R_PUSH, "angles": list(STATIONS), "d": inch(0.190),
+            {"name": "push_bolts", "kind": "push", "r": R_PUSH, "angles": list(STATIONS), "d": BOLT_MAJOR_D,
              "head_t": HEAD_T, "head_af": HEAD_AF,
              "z_head": Z_MP - PUSH_BOLT_L, "z_tip": Z_MP, "explode": [0, 0, -170]},
-            {"name": "pull_bolts", "kind": "pull", "r": R_PULL, "angles": list(STATIONS), "d": inch(0.190),
+            {"name": "pull_bolts", "kind": "pull", "r": R_PULL, "angles": list(STATIONS), "d": BOLT_MAJOR_D,
              "head_t": HEAD_T, "head_af": HEAD_AF,
              "z_head": Z_PULL_HEAD_FACE, "z_tip": Z_PULL_HEAD_FACE - PULL_BOLT_L,
              "explode": [0, 0, 110]},
@@ -1762,7 +1906,7 @@ def verify():
     # --- bolt head must pass through the cap bore during assembly -------------
     # FIT_SLIP, not FIT_PRESS: this is the MIRROR PLATE's pocket. Pointed at the wrong
     # constant these three checks would still pass and would be checking nothing.
-    head_corners = 2 * (HEAD_AF + FIT_SLIP) / sqrt(3.0)
+    head_corners = across_corners(HEAD_AF, FIT_SLIP)
     chk(head_corners < CAP_D,
         f"head across corners {head_corners:.2f} < cap bore {CAP_D:.2f} mm")
     chk(0 < FIT_PRESS <= FIT_SLIP,
@@ -1791,6 +1935,19 @@ def verify():
     chk(free > PLATE_GAP, f"spring free length {free} > gap {PLATE_GAP:.2f} mm (stays preloaded)")
     chk(solid_h < PLATE_GAP - 3.0, f"solid height {solid_h} well below gap {PLATE_GAP:.2f} mm (no coil bind)")
     chk(SPRING_SEAT_D > SPRING_OD, "spring seat clears spring OD")
+    # The spring rides on the pull bolt's shank, so its bore must clear the bolt -- and not
+    # just statically. A fully-tilted pull bolt walks the shank sideways across the spring's
+    # span by span*tan(tilt), and that is the clearance the bore has to have per side or the
+    # spring rubs. Conservative (full tilt over the whole span, the shank as a line): the
+    # real contact is less. At 10-24 the 9 mm springs had ~1.1 mm/side against ~0.46 mm of
+    # sway; the 1/4-20 springs are sized to keep that, not merely to slide on. ADR-0005.
+    spring_bore = SPRING_OD - 2 * SPRING_WIRE_D
+    span = PLATE_GAP + SPRING_SEAT_DEPTH
+    sway = span * tan(radians(pull_bolt_tilt()))
+    chk(spring_bore - BOLT_MAJOR_D > 2 * sway,
+        f"spring coil bore {spring_bore:.2f} mm clears the {BOLT_MAJOR_D:.2f} mm bolt by "
+        f"{(spring_bore-BOLT_MAJOR_D)/2:.2f} mm/side, over the {sway:.2f} mm a fully-tilted "
+        f"bolt sways across its span")
 
     # --- posts land ON the stations, and on plate material --------------------
     from math import atan2, degrees, hypot
@@ -1883,7 +2040,7 @@ def verify():
         f"vs {moving/4.4482:.2f} lb of moving assembly ({3*preload/moving:.2f}x)")
 
     # The push knob is blind behind its pocket -- probe the axis where a bore would be.
-    depth = KNOB_T - (HEAD_T + 0.4)
+    depth = KNOB_T - (HEAD_T + HEAD_CLEAR)
     probe = extrude(Circle(PASS_HOLE_D / 2), depth - 0.5)
     try:
         solid_behind = (probe & push_knob()).volume
@@ -1915,7 +2072,7 @@ def verify():
             f"hex {corners:.2f} across corners in ø{d:.0f}")
     # Solid against solid: the flutes must not break into the pocket ANYWHERE. The
     # arithmetic above assumes the phase lands flutes on flats; this does not assume it.
-    for nm, fn, d, af, h in (("push", push_knob, PUSH_KNOB_D, HEAD_AF, HEAD_T + 0.4),
+    for nm, fn, d, af, h in (("push", push_knob, PUSH_KNOB_D, HEAD_AF, HEAD_T + HEAD_CLEAR),
                              ("pull", pull_knob, PULL_KNOB_D, NUT_AF, NUT_T)):
         pocket = Pos(0, 0, KNOB_T - h) * hex_prism(af, h, fit=FIT_PRESS)
         flutes = Compound([at(30.0 + 360.0 * i / KNOB_FLUTES,
@@ -2046,10 +2203,11 @@ def verify():
     # This is the check that would fire if a station were added, or a knob stopped
     # capturing a nut: the drawn count changes and the BOM does not follow.
     buy = {r["item"]: r["qty"] for r in B if r["section"] == "purchased"}
-    drawn = {"10-24 hex nut": inst["hex_nut"],
+    drawn = {f"{BOLT['label']} hex nut": inst["hex_nut"],
              "#4 flat washer (landing pad)": inst["washer"],
              "Compression spring": len(A["springs"]["instances"]),
-             "10-24 hex-head MACHINE screw": sum(len(b["angles"]) for b in A["bolts"])}
+             f"{BOLT['label']} hex-head MACHINE screw": sum(len(b["angles"])
+                                                            for b in A["bolts"])}
     chk(all(buy.get(k) == v for k, v in drawn.items()),
         f"BOM buys exactly the hardware the model draws: {drawn}")
     # Both bolts are one length, which is the whole point of ADR-0002's rework, and the
@@ -2132,7 +2290,8 @@ def verify():
     for nm, host, placed in (
             ("push bolt head", "push_knob", Pos(0, 0, KNOB_T - HEAD_T) * head),
             ("pull bolt head", "mirror_plate",
-             Compound([at(a, R_PULL, cap_z - (HEAD_T + 0.4)) * head for a in STATIONS])),
+             Compound([at(a, R_PULL, cap_z - (HEAD_T + HEAD_CLEAR)) * head
+                       for a in STATIONS])),
     ):
         body = solid(host)
         assert placed.volume > 0 and body.volume > 0, f"{nm}: empty operand"
@@ -2160,11 +2319,13 @@ def verify():
     chk(reach < TUBE_ID / 2 + 1e-9,
         f"widest thing in the cell reaches r={reach:.2f}, tube bore r={TUBE_ID/2:.2f} mm")
 
-    # The fan lives in the hole the knobs are NOT in. Corner-to-knob is the tight one.
+    # The fan lives in the hole the knobs are NOT in, but the two do not share a z-band:
+    # the fan is bolted to the tube plate's rear face and the push knobs sit behind it.
+    # The clearance is therefore checked SOLIDS AGAINST SOLIDS below, not by comparing the
+    # fan's corner radius against the knob ring. That radial comparison reads as a collision
+    # at 1/4-20 even though the two never touch, and it would miss a real one caused by a
+    # shorter push bolt carrying the knob into the fan's z-band.
     fan_corner = sqrt(2) * (FAN_SIZE / 2 - FAN_CORNER_R) + FAN_CORNER_R
-    chk(fan_corner < R_PUSH - PUSH_KNOB_D / 2,
-        f"fan corner r={fan_corner:.2f} clears the push knobs at r={R_PUSH-PUSH_KNOB_D/2:.2f}"
-        f" by {R_PUSH - PUSH_KNOB_D/2 - fan_corner:.2f} mm")
     chk(FAN_THROAT_D <= CENTER_BORE + 1e-9,
         f"fan throat {FAN_THROAT_D:.1f} passes the {CENTER_BORE:.1f} mm centre bore")
     chk(FAN_CLEAR_HOLE_D > FAN_HOLE_D,
@@ -2181,6 +2342,18 @@ def verify():
     chk(clash < 1.0, f"fan sits on the tube plate's rear face (overlap {clash:.2f} mm^3)")
     chk(abs(placed_fan.bounding_box().max.Z) < 1e-9,
         f"fan's mounting face is ON the rear face (z={placed_fan.bounding_box().max.Z:.2f})")
+    # ...and the push knobs, which sit immediately behind it. The solid intersection is the
+    # honest test: it accounts for the radial AND the axial placement at once.
+    knobs = Compound([Pos(*i["pos"]) * Rot(0, 0, i.get("rot", 0.0)) * solid("push_knob")
+                      for i in [p for p in A["parts"]
+                                if p["name"] == "push_knob"][0]["instances"]])
+    try:
+        fan_knob = (placed_fan & knobs).volume
+    except Exception:
+        fan_knob = 0.0
+    chk(fan_knob < 1.0,
+        f"fan clears the push knobs as solids (overlap {fan_knob:.2f} mm^3; fan corner "
+        f"r={fan_corner:.2f}, push knob ring inner r={R_PUSH-PUSH_KNOB_D/2:.2f})")
 
     # --- the mirror plate must clear the tube wall as it tilts ----------------
     # Tilting shrinks a feature's projected radius (r.cos) but swings tall features out
@@ -2450,7 +2623,7 @@ if __name__ == "__main__":
     stale = bom_snapshot_stale(rows) if BOM_PATH else []
 
     if check_only and not BOM_PATH:
-        print(f"\n--check: all checks passed; a thickness variant has no committed "
+        print(f"\n--check: all checks passed; a variant has no committed "
               f"snapshot to compare; nothing written")
     elif check_only:
         # CI, or a fresh checkout. Nothing is written, so a stale snapshot is somebody
